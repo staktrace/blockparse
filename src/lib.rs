@@ -1,3 +1,5 @@
+use std::fmt;
+
 pub mod error;
 
 pub use crate::error::BlockParseError;
@@ -17,6 +19,8 @@ impl Network {
         }
     }
 }
+
+pub type Hash = [u8; 32];
 
 #[derive(Debug)]
 pub struct TransactionInput {
@@ -43,12 +47,29 @@ pub struct Transaction {
 #[derive(Debug)]
 pub struct Block {
     pub version: u32,
-    pub prev_block_hash: [u8; 32],
-    pub merkle_root: [u8; 32],
+    pub prev_block_hash: Hash,
+    pub merkle_root: Hash,
     pub time: u32,
     pub bits: u32,
     pub nonce: u32,
     pub transactions: Vec<Transaction>,
+}
+
+fn write_hash(f: &mut fmt::Formatter<'_>, hash: &Hash) -> fmt::Result {
+    for v in hash {
+        write!(f, "{:02x}", v)?;
+    }
+    Ok(())
+}
+
+impl fmt::Display for Block {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "time:{} prev:", self.time)?;
+        write_hash(f, &self.prev_block_hash)?;
+        write!(f, " merkle:")?;
+        write_hash(f, &self.merkle_root)?;
+        write!(f, " bits:{} nonce:{}", self.bits, self.nonce)
+    }
 }
 
 pub(crate) fn read_2le(bytes: &[u8], ix: &mut usize) -> Result<u16, BlockParseError> {
@@ -89,16 +110,16 @@ pub(crate) fn read_8le(bytes: &[u8], ix: &mut usize) -> Result<u64, BlockParseEr
     Ok(result)
 }
 
-pub(crate) fn read_32le(bytes: &[u8], ix: &mut usize) -> Result<[u8; 32], BlockParseError> {
+pub(crate) fn read_hash_le(bytes: &[u8], ix: &mut usize) -> Result<Hash, BlockParseError> {
     if bytes.len() < *ix + 32 {
         return Err(BlockParseError::new(format!("Unexpected end of input reading 32 bytes at index {}", *ix)));
     }
-    let mut buf = [0; 32];
+    let mut hash = [0; 32];
     for i in 0..32 {
-        buf[i] = bytes[*ix + 31 - i];
+        hash[i] = bytes[*ix + 31 - i];
     }
     *ix += 32;
-    Ok(buf)
+    Ok(hash)
 }
 
 pub(crate) fn read_varint(bytes: &[u8], ix: &mut usize) -> Result<u64, BlockParseError> {
@@ -170,8 +191,8 @@ pub fn parse_blockfile(raw_data: &[u8], expected_network: Option<Network>) -> Re
 
 pub fn parse_block(raw_data: &[u8], ix: &mut usize) -> Result<Block, BlockParseError> {
     let version = read_4le(raw_data, ix)?;
-    let prev_block_hash = read_32le(raw_data, ix)?;
-    let merkle_root = read_32le(raw_data, ix)?;
+    let prev_block_hash = read_hash_le(raw_data, ix)?;
+    let merkle_root = read_hash_le(raw_data, ix)?;
     let time = read_4le(raw_data, ix)?;
     let bits = read_4le(raw_data, ix)?;
     let nonce = read_4le(raw_data, ix)?;
@@ -216,7 +237,7 @@ pub fn parse_transaction(raw_data: &[u8], ix: &mut usize) -> Result<Transaction,
 }
 
 pub fn parse_transaction_input(raw_data: &[u8], ix: &mut usize) -> Result<TransactionInput, BlockParseError> {
-    let txid = read_32le(raw_data, ix)?;
+    let txid = read_hash_le(raw_data, ix)?;
     let vout = read_4le(raw_data, ix)?;
     let scriptsig_size = read_varint(raw_data, ix)?;
     let scriptsig = read_var(raw_data, ix, scriptsig_size)?;

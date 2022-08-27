@@ -9,7 +9,10 @@ fn main() {
         file.read_to_end(&mut bytes).unwrap();
         println!("Parsing {:?}...", arg);
         match blockparse::parse_blockfile(&bytes, Some(blockparse::Network::MAINNET)) {
-            Ok(blocks) => println!("Success!\n{:#?}", blocks),
+            Ok(blocks) => {
+                println!("Parsed {} blocks", blocks.len());
+                blocks.iter().for_each(|b| println!("{}", b));
+            }
             Err(e) => println!("Error: {}", e),
         };
     }
