@@ -135,7 +135,7 @@ pub(crate) fn read_hash_le(bytes: &[u8], ix: &mut usize) -> Result<Hash, BlockPa
     Ok(hash)
 }
 
-pub(crate) fn read_varint(bytes: &[u8], ix: &mut usize) -> Result<u64, BlockParseError> {
+pub(crate) fn read_compact_size(bytes: &[u8], ix: &mut usize) -> Result<u64, BlockParseError> {
     if bytes.len() < *ix + 1 {
         return Err(BlockParseError::new(format!("Unexpected end of input reading 1 byte at index {}", *ix)));
     }
@@ -177,7 +177,7 @@ impl IntoUsize for u32 {
 }
 
 pub(crate) fn read_bytearray(bytes: &[u8], ix: &mut usize) -> Result<Vec<u8>, BlockParseError> {
-    let count = read_varint(bytes, ix)?.usize()?;
+    let count = read_compact_size(bytes, ix)?.usize()?;
     let end = *ix + count;
 
     if bytes.len() < end {
@@ -218,7 +218,7 @@ pub fn parse_block(raw_data: &[u8], ix: &mut usize) -> Result<Block, BlockParseE
     let bits = read_4le(raw_data, ix)?;
     let nonce = read_4le(raw_data, ix)?;
 
-    let transaction_count = read_varint(raw_data, ix)?.usize()?;
+    let transaction_count = read_compact_size(raw_data, ix)?.usize()?;
     let mut transactions = Vec::with_capacity(transaction_count);
     for _ in 0..transaction_count {
         transactions.push(parse_transaction(raw_data, ix)?);
@@ -237,9 +237,9 @@ pub fn parse_block(raw_data: &[u8], ix: &mut usize) -> Result<Block, BlockParseE
 
 pub fn parse_transaction(raw_data: &[u8], ix: &mut usize) -> Result<Transaction, BlockParseError> {
     let version = read_4le(raw_data, ix)?;
-    let count = read_varint(raw_data, ix)?.usize()?;
+    let count = read_compact_size(raw_data, ix)?.usize()?;
     let (flags, input_count) = if count == 0 /* && allow_witness*/ {
-        (read_txflags(raw_data, ix)?, read_varint(raw_data, ix)?.usize()?)
+        (read_txflags(raw_data, ix)?, read_compact_size(raw_data, ix)?.usize()?)
     } else {
         (TransactionFlags::empty(), count)
     };
@@ -247,14 +247,14 @@ pub fn parse_transaction(raw_data: &[u8], ix: &mut usize) -> Result<Transaction,
     for _ in 0..input_count {
         inputs.push(parse_transaction_input(raw_data, ix)?);
     }
-    let output_count = read_varint(raw_data, ix)?.usize()?;
+    let output_count = read_compact_size(raw_data, ix)?.usize()?;
     let mut outputs = Vec::with_capacity(output_count);
     for _ in 0..output_count {
         outputs.push(parse_transaction_output(raw_data, ix)?);
     }
     if flags.contains(TransactionFlags::WITNESS) {
         for i in 0..input_count {
-            let outer_count = read_varint(raw_data, ix)?.usize()?;
+            let outer_count = read_compact_size(raw_data, ix)?.usize()?;
             let mut witness_stuff = Vec::with_capacity(outer_count);
             for _ in 0..outer_count {
                 witness_stuff.push(read_bytearray(raw_data, ix)?);
