@@ -1,3 +1,8 @@
+#![forbid(unsafe_code)]
+
+#[macro_use]
+extern crate bitflags;
+
 use std::fmt;
 
 pub mod error;
@@ -22,12 +27,19 @@ impl Network {
 
 pub type Hash = [u8; 32];
 
+bitflags! {
+    pub struct TransactionFlags : u8 {
+        const WITNESS = 0x1;
+    }
+}
+
 #[derive(Debug)]
 pub struct TransactionInput {
     pub txid: [u8; 32],
     pub vout: u32,
     pub scriptsig: Vec<u8>,
     pub sequence: u32,
+    pub witness_stuff: Vec<Vec<u8>>,
 }
 
 #[derive(Debug)]
@@ -39,6 +51,7 @@ pub struct TransactionOutput {
 #[derive(Debug)]
 pub struct Transaction {
     pub version: u32,
+    pub flags: TransactionFlags,
     pub inputs: Vec<TransactionInput>,
     pub outputs: Vec<TransactionOutput>,
     pub locktime: u32,
@@ -135,6 +148,14 @@ pub(crate) fn read_varint(bytes: &[u8], ix: &mut usize) -> Result<u64, BlockPars
     }
 }
 
+pub(crate) fn read_txflags(bytes: &[u8], ix: &mut usize) -> Result<TransactionFlags, BlockParseError> {
+    if bytes.len() < *ix + 1 {
+        return Err(BlockParseError::new(format!("Unexpected end of input reading 1 byte at index {}", *ix)));
+    }
+    *ix += 1;
+    TransactionFlags::from_bits(bytes[*ix - 1]).ok_or_else(|| BlockParseError::new(format!("Unrecognized transaction flags at index {}", *ix - 1)))
+}
+
 trait IntoUsize {
     fn usize(self) -> Result<usize, BlockParseError>;
 }
@@ -155,8 +176,8 @@ impl IntoUsize for u32 {
     }
 }
 
-pub(crate) fn read_var(bytes: &[u8], ix: &mut usize, count_u64: u64) -> Result<Vec<u8>, BlockParseError> {
-    let count = count_u64.usize()?;
+pub(crate) fn read_bytearray(bytes: &[u8], ix: &mut usize) -> Result<Vec<u8>, BlockParseError> {
+    let count = read_varint(bytes, ix)?.usize()?;
     let end = *ix + count;
 
     if bytes.len() < end {
@@ -216,7 +237,12 @@ pub fn parse_block(raw_data: &[u8], ix: &mut usize) -> Result<Block, BlockParseE
 
 pub fn parse_transaction(raw_data: &[u8], ix: &mut usize) -> Result<Transaction, BlockParseError> {
     let version = read_4le(raw_data, ix)?;
-    let input_count = read_varint(raw_data, ix)?.usize()?;
+    let count = read_varint(raw_data, ix)?.usize()?;
+    let (flags, input_count) = if count == 0 /* && allow_witness*/ {
+        (read_txflags(raw_data, ix)?, read_varint(raw_data, ix)?.usize()?)
+    } else {
+        (TransactionFlags::empty(), count)
+    };
     let mut inputs = Vec::with_capacity(input_count);
     for _ in 0..input_count {
         inputs.push(parse_transaction_input(raw_data, ix)?);
@@ -226,10 +252,21 @@ pub fn parse_transaction(raw_data: &[u8], ix: &mut usize) -> Result<Transaction,
     for _ in 0..output_count {
         outputs.push(parse_transaction_output(raw_data, ix)?);
     }
+    if flags.contains(TransactionFlags::WITNESS) {
+        for i in 0..input_count {
+            let outer_count = read_varint(raw_data, ix)?.usize()?;
+            let mut witness_stuff = Vec::with_capacity(outer_count);
+            for _ in 0..outer_count {
+                witness_stuff.push(read_bytearray(raw_data, ix)?);
+            }
+            inputs[i].witness_stuff = witness_stuff;
+        }
+    }
     let locktime = read_4le(raw_data, ix)?;
 
     Ok(Transaction {
         version,
+        flags,
         inputs,
         outputs,
         locktime,
@@ -239,8 +276,7 @@ pub fn parse_transaction(raw_data: &[u8], ix: &mut usize) -> Result<Transaction,
 pub fn parse_transaction_input(raw_data: &[u8], ix: &mut usize) -> Result<TransactionInput, BlockParseError> {
     let txid = read_hash_le(raw_data, ix)?;
     let vout = read_4le(raw_data, ix)?;
-    let scriptsig_size = read_varint(raw_data, ix)?;
-    let scriptsig = read_var(raw_data, ix, scriptsig_size)?;
+    let scriptsig = read_bytearray(raw_data, ix)?;
     let sequence = read_4le(raw_data, ix)?;
 
     Ok(TransactionInput {
@@ -248,13 +284,13 @@ pub fn parse_transaction_input(raw_data: &[u8], ix: &mut usize) -> Result<Transa
         vout,
         scriptsig,
         sequence,
+        witness_stuff: vec![],
     })
 }
 
 pub fn parse_transaction_output(raw_data: &[u8], ix: &mut usize) -> Result<TransactionOutput, BlockParseError> {
     let value = read_8le(raw_data, ix)?;
-    let scriptpubkey_size = read_varint(raw_data, ix)?;
-    let scriptpubkey = read_var(raw_data, ix, scriptpubkey_size)?;
+    let scriptpubkey = read_bytearray(raw_data, ix)?;
 
     Ok(TransactionOutput {
         value,
