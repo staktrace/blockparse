@@ -1,3 +1,5 @@
+#![deny(warnings)]
+#![deny(clippy::all)]
 #![forbid(unsafe_code)]
 
 #[macro_use]
@@ -108,7 +110,7 @@ fn read_2le(bytes: &[u8], ix: &mut usize) -> Result<u16, BlockParseError> {
         return Err(BlockParseError::new(format!("Unexpected end of input reading 2 bytes at index {}", *ix)));
     }
     let result = ((bytes[*ix + 1] as u16) << 8)
-        | (bytes[*ix + 0] as u16);
+        | (bytes[*ix] as u16);
     *ix += 2;
     Ok(result)
 }
@@ -120,7 +122,7 @@ fn read_4le(bytes: &[u8], ix: &mut usize) -> Result<u32, BlockParseError> {
     let result = ((bytes[*ix + 3] as u32) << 24)
         | ((bytes[*ix + 2] as u32) << 16)
         | ((bytes[*ix + 1] as u32) << 8)
-        | (bytes[*ix + 0] as u32);
+        | (bytes[*ix] as u32);
     *ix += 4;
     Ok(result)
 }
@@ -136,7 +138,7 @@ fn read_8le(bytes: &[u8], ix: &mut usize) -> Result<u64, BlockParseError> {
         | ((bytes[*ix + 3] as u64) << 24)
         | ((bytes[*ix + 2] as u64) << 16)
         | ((bytes[*ix + 1] as u64) << 8)
-        | (bytes[*ix + 0] as u64);
+        | (bytes[*ix] as u64);
     *ix += 8;
     Ok(result)
 }
@@ -271,13 +273,13 @@ pub fn parse_transaction(raw_data: &[u8], ix: &mut usize) -> Result<Transaction,
         outputs.push(parse_transaction_output(raw_data, ix)?);
     }
     if flags.contains(TransactionFlags::WITNESS) {
-        for i in 0..input_count {
+        for input in inputs.iter_mut() {
             let outer_count = read_compact_size(raw_data, ix)?.usize()?;
             let mut witness_stuff = Vec::with_capacity(outer_count);
             for _ in 0..outer_count {
                 witness_stuff.push(read_bytearray(raw_data, ix)?);
             }
-            inputs[i].witness_stuff = witness_stuff;
+            input.witness_stuff = witness_stuff;
         }
     }
     let locktime = read_4le(raw_data, ix)?;
