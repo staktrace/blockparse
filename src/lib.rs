@@ -5,9 +5,27 @@ extern crate bitflags;
 
 use std::fmt;
 
-pub mod error;
+#[derive(Debug, PartialEq)]
+pub struct BlockParseError {
+    msg: String,
+}
 
-pub use crate::error::BlockParseError;
+impl BlockParseError {
+    pub(crate) fn new(msg: String) -> Self {
+        BlockParseError {
+            msg,
+        }
+    }
+}
+
+impl fmt::Display for BlockParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.msg)
+    }
+}
+
+impl std::error::Error for BlockParseError {
+}
 
 pub enum Network {
     MAINNET,
@@ -85,7 +103,7 @@ impl fmt::Display for Block {
     }
 }
 
-pub(crate) fn read_2le(bytes: &[u8], ix: &mut usize) -> Result<u16, BlockParseError> {
+fn read_2le(bytes: &[u8], ix: &mut usize) -> Result<u16, BlockParseError> {
     if bytes.len() < *ix + 2 {
         return Err(BlockParseError::new(format!("Unexpected end of input reading 2 bytes at index {}", *ix)));
     }
@@ -95,7 +113,7 @@ pub(crate) fn read_2le(bytes: &[u8], ix: &mut usize) -> Result<u16, BlockParseEr
     Ok(result)
 }
 
-pub(crate) fn read_4le(bytes: &[u8], ix: &mut usize) -> Result<u32, BlockParseError> {
+fn read_4le(bytes: &[u8], ix: &mut usize) -> Result<u32, BlockParseError> {
     if bytes.len() < *ix + 4 {
         return Err(BlockParseError::new(format!("Unexpected end of input reading 4 bytes at index {}", *ix)));
     }
@@ -107,7 +125,7 @@ pub(crate) fn read_4le(bytes: &[u8], ix: &mut usize) -> Result<u32, BlockParseEr
     Ok(result)
 }
 
-pub(crate) fn read_8le(bytes: &[u8], ix: &mut usize) -> Result<u64, BlockParseError> {
+fn read_8le(bytes: &[u8], ix: &mut usize) -> Result<u64, BlockParseError> {
     if bytes.len() < *ix + 8 {
         return Err(BlockParseError::new(format!("Unexpected end of input reading 8 bytes at index {}", *ix)));
     }
@@ -123,7 +141,7 @@ pub(crate) fn read_8le(bytes: &[u8], ix: &mut usize) -> Result<u64, BlockParseEr
     Ok(result)
 }
 
-pub(crate) fn read_hash_le(bytes: &[u8], ix: &mut usize) -> Result<Hash, BlockParseError> {
+fn read_hash_le(bytes: &[u8], ix: &mut usize) -> Result<Hash, BlockParseError> {
     if bytes.len() < *ix + 32 {
         return Err(BlockParseError::new(format!("Unexpected end of input reading 32 bytes at index {}", *ix)));
     }
@@ -135,7 +153,7 @@ pub(crate) fn read_hash_le(bytes: &[u8], ix: &mut usize) -> Result<Hash, BlockPa
     Ok(hash)
 }
 
-pub(crate) fn read_compact_size(bytes: &[u8], ix: &mut usize) -> Result<u64, BlockParseError> {
+fn read_compact_size(bytes: &[u8], ix: &mut usize) -> Result<u64, BlockParseError> {
     if bytes.len() < *ix + 1 {
         return Err(BlockParseError::new(format!("Unexpected end of input reading 1 byte at index {}", *ix)));
     }
@@ -148,7 +166,7 @@ pub(crate) fn read_compact_size(bytes: &[u8], ix: &mut usize) -> Result<u64, Blo
     }
 }
 
-pub(crate) fn read_txflags(bytes: &[u8], ix: &mut usize) -> Result<TransactionFlags, BlockParseError> {
+fn read_txflags(bytes: &[u8], ix: &mut usize) -> Result<TransactionFlags, BlockParseError> {
     if bytes.len() < *ix + 1 {
         return Err(BlockParseError::new(format!("Unexpected end of input reading 1 byte at index {}", *ix)));
     }
@@ -176,7 +194,7 @@ impl IntoUsize for u32 {
     }
 }
 
-pub(crate) fn read_bytearray(bytes: &[u8], ix: &mut usize) -> Result<Vec<u8>, BlockParseError> {
+fn read_bytearray(bytes: &[u8], ix: &mut usize) -> Result<Vec<u8>, BlockParseError> {
     let count = read_compact_size(bytes, ix)?.usize()?;
     let end = *ix + count;
 
@@ -296,13 +314,4 @@ pub fn parse_transaction_output(raw_data: &[u8], ix: &mut usize) -> Result<Trans
         value,
         scriptpubkey,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
-    }
 }
