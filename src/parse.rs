@@ -23,6 +23,15 @@ impl fmt::Display for BlockParseError {
 impl std::error::Error for BlockParseError {
 }
 
+fn read_byte(bytes: &[u8], ix: &mut usize) -> Result<u8, BlockParseError> {
+    if bytes.len() < *ix + 1 {
+        return Err(BlockParseError::new(format!("Unexpected end of input reading 1 byte at index {}", *ix)));
+    }
+    let result = bytes[*ix];
+    *ix += 1;
+    Ok(result)
+}
+
 fn read_2le(bytes: &[u8], ix: &mut usize) -> Result<u16, BlockParseError> {
     if bytes.len() < *ix + 2 {
         return Err(BlockParseError::new(format!("Unexpected end of input reading 2 bytes at index {}", *ix)));
@@ -74,11 +83,7 @@ fn read_hash_le(bytes: &[u8], ix: &mut usize) -> Result<Hash, BlockParseError> {
 }
 
 fn read_compact_size(bytes: &[u8], ix: &mut usize) -> Result<u64, BlockParseError> {
-    if bytes.len() < *ix + 1 {
-        return Err(BlockParseError::new(format!("Unexpected end of input reading 1 byte at index {}", *ix)));
-    }
-    *ix += 1;
-    match bytes[*ix - 1] {
+    match read_byte(bytes, ix)? {
         val @ 0..=0xfc => Ok(val as u64),
         0xfd => read_2le(bytes, ix).map(|x| x as u64),
         0xfe => read_4le(bytes, ix).map(|x| x as u64),
@@ -87,11 +92,8 @@ fn read_compact_size(bytes: &[u8], ix: &mut usize) -> Result<u64, BlockParseErro
 }
 
 fn read_txflags(bytes: &[u8], ix: &mut usize) -> Result<TransactionFlags, BlockParseError> {
-    if bytes.len() < *ix + 1 {
-        return Err(BlockParseError::new(format!("Unexpected end of input reading 1 byte at index {}", *ix)));
-    }
-    *ix += 1;
-    TransactionFlags::from_bits(bytes[*ix - 1]).ok_or_else(|| BlockParseError::new(format!("Unrecognized transaction flags at index {}", *ix - 1)))
+    let b = read_byte(bytes, ix)?;
+    TransactionFlags::from_bits(b).ok_or_else(|| BlockParseError::new(format!("Unrecognized transaction flags at index {}", *ix - 1)))
 }
 
 trait IntoUsize {
