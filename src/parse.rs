@@ -127,28 +127,20 @@ fn read_bytearray(bytes: &[u8], ix: &mut usize) -> Result<Vec<u8>, BlockParseErr
     Ok(result)
 }
 
-pub fn parse_blockfile(raw_data: &[u8], expected_network: Option<Network>) -> Result<Vec<Block>, BlockParseError> {
+pub fn parse_blockfile(raw_data: &[u8]) -> Result<Vec<Block>, BlockParseError> {
     let mut ix = 0;
     let mut blocks = Vec::new();
     while ix < raw_data.len() {
-        let magic = read_4le(raw_data, &mut ix)?;
-        if let Some(ref network) = expected_network {
-            if magic != network.magic() {
-                return Err(BlockParseError::new(format!("Incorrect magic header; expected {:#x} but got {:#x}", network.magic(), magic)))
-            }
-        }
-
-        let size = read_4le(raw_data, &mut ix)?.usize()?;
-        let end = ix + size;
         blocks.push(parse_block(raw_data, &mut ix)?);
-        if ix != end {
-            return Err(BlockParseError::new(format!("Unexpected read index after block {}; expected {} but got {}", blocks.len(), end, ix)));
-        }
     }
     Ok(blocks)
 }
 
 pub fn parse_block(raw_data: &[u8], ix: &mut usize) -> Result<Block, BlockParseError> {
+    let magic = read_4le(raw_data, ix)?;
+    let network = Network::from(magic).ok_or_else(|| BlockParseError::new(format!("Unrecognized network magic value {:#x} at index {}", magic, *ix - 4)))?;
+    let size = read_4le(raw_data, ix)?.usize()?;
+    let end = *ix + size;
     let version = read_4le(raw_data, ix)?;
     let prev_block_hash = read_hash_le(raw_data, ix)?;
     let merkle_root = read_hash_le(raw_data, ix)?;
@@ -162,7 +154,12 @@ pub fn parse_block(raw_data: &[u8], ix: &mut usize) -> Result<Block, BlockParseE
         transactions.push(parse_transaction(raw_data, ix)?);
     }
 
+    if *ix != end {
+        return Err(BlockParseError::new(format!("Unexpected read index after block; expected {} but got {}", end, *ix)));
+    }
+
     Ok(Block {
+        network,
         version,
         prev_block_hash,
         merkle_root,
@@ -251,11 +248,11 @@ mod tests {
 
     #[test]
     fn test_parsing() {
-        let block_0 = parse_blockfile(&read_testdata("block_0.dat"), Some(Network::MAINNET)).unwrap().pop().unwrap();
+        let block_0 = parse_blockfile(&read_testdata("block_0.dat")).unwrap().pop().unwrap();
         assert_eq!(block_0.merkle_root.to_string(), "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b");
         assert_eq!(block_0.transactions.len(), 1);
 
-        let block_481829 = parse_blockfile(&read_testdata("block_481829.dat"), Some(Network::MAINNET)).unwrap().pop().unwrap();
+        let block_481829 = parse_blockfile(&read_testdata("block_481829.dat")).unwrap().pop().unwrap();
         assert_eq!(block_481829.merkle_root.to_string(), "f06f697be2cac7af7ed8cd0b0b81eaa1a39e444c6ebd3697e35ab34461b6c58d");
         assert_eq!(block_481829.transactions.len(), 2020);
     }

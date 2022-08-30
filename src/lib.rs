@@ -9,6 +9,7 @@ use std::fmt;
 
 pub mod parse;
 
+#[derive(Debug)]
 pub enum Network {
     MAINNET,
     TESTNET3,
@@ -16,11 +17,12 @@ pub enum Network {
 }
 
 impl Network {
-    fn magic(&self) -> u32 {
-        match self {
-            Network::MAINNET => 0xd9b4bef9,
-            Network::TESTNET3 => 0x0709110b,
-            Network::REGTEST => 0xdab5bffa,
+    fn from(magic: u32) -> Option<Self> {
+        match magic {
+            0xd9b4bef9 => Some(Network::MAINNET),
+            0x0709110b => Some(Network::TESTNET3),
+            0xdab5bffa => Some(Network::REGTEST),
+            _ => None,
         }
     }
 }
@@ -69,6 +71,7 @@ pub struct Transaction {
 
 #[derive(Debug)]
 pub struct Block {
+    pub network: Network,
     pub version: u32,
     pub prev_block_hash: Hash,
     pub merkle_root: Hash,
