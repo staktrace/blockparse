@@ -353,7 +353,7 @@ pub fn parse_transaction(raw_data: &[u8], ix: &mut usize) -> Result<Transaction,
     })
 }
 
-pub fn parse_transaction_input(raw_data: &[u8], ix: &mut usize) -> Result<TransactionInput, BlockParseError> {
+fn parse_transaction_input(raw_data: &[u8], ix: &mut usize) -> Result<TransactionInput, BlockParseError> {
     let txid = read_hash_le(raw_data, ix)?;
     let vout = read_4le(raw_data, ix)?;
     let unlock_script = read_script(raw_data, ix)?;
@@ -368,7 +368,7 @@ pub fn parse_transaction_input(raw_data: &[u8], ix: &mut usize) -> Result<Transa
     })
 }
 
-pub fn parse_transaction_output(raw_data: &[u8], ix: &mut usize) -> Result<TransactionOutput, BlockParseError> {
+fn parse_transaction_output(raw_data: &[u8], ix: &mut usize) -> Result<TransactionOutput, BlockParseError> {
     let value = read_8le(raw_data, ix)?;
     let lock_script = read_script(raw_data, ix)?;
 
