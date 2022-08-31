@@ -1,7 +1,7 @@
 use std::fmt;
 use crate::{Block, Hash, InputScript, Network, Opcode, Script, Transaction, TransactionFlags, TransactionInput, TransactionOutput};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub struct BlockParseError {
     msg: String,
 }
