@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::{Block, Hash, Network, Opcode, Script, Transaction, TransactionFlags, TransactionInput, TransactionOutput};
+use crate::{Block, Hash, InputScript, Network, Opcode, Script, Transaction, TransactionFlags, TransactionInput, TransactionOutput};
 
 #[derive(Debug, PartialEq)]
 pub struct BlockParseError {
@@ -295,8 +295,8 @@ pub fn parse_block(raw_data: &[u8], ix: &mut usize) -> Result<Block, BlockParseE
 
     let transaction_count = read_compact_size(raw_data, ix)?.usize()?;
     let mut transactions = Vec::with_capacity(transaction_count);
-    for _ in 0..transaction_count {
-        transactions.push(parse_transaction(raw_data, ix)?);
+    for transaction in 0..transaction_count {
+        transactions.push(parse_transaction(raw_data, ix, transaction == 0)?);
     }
 
     if *ix != end {
@@ -315,7 +315,7 @@ pub fn parse_block(raw_data: &[u8], ix: &mut usize) -> Result<Block, BlockParseE
     })
 }
 
-pub fn parse_transaction(raw_data: &[u8], ix: &mut usize) -> Result<Transaction, BlockParseError> {
+pub fn parse_transaction(raw_data: &[u8], ix: &mut usize, is_coinbase: bool) -> Result<Transaction, BlockParseError> {
     let version = read_4le(raw_data, ix)?;
     let count = read_compact_size(raw_data, ix)?.usize()?;
     let (flags, input_count) = if count == 0 /* && allow_witness*/ {
@@ -325,7 +325,7 @@ pub fn parse_transaction(raw_data: &[u8], ix: &mut usize) -> Result<Transaction,
     };
     let mut inputs = Vec::with_capacity(input_count);
     for _ in 0..input_count {
-        inputs.push(parse_transaction_input(raw_data, ix)?);
+        inputs.push(parse_transaction_input(raw_data, ix, is_coinbase)?);
     }
     let output_count = read_compact_size(raw_data, ix)?.usize()?;
     let mut outputs = Vec::with_capacity(output_count);
@@ -353,10 +353,14 @@ pub fn parse_transaction(raw_data: &[u8], ix: &mut usize) -> Result<Transaction,
     })
 }
 
-fn parse_transaction_input(raw_data: &[u8], ix: &mut usize) -> Result<TransactionInput, BlockParseError> {
+fn parse_transaction_input(raw_data: &[u8], ix: &mut usize, is_coinbase: bool) -> Result<TransactionInput, BlockParseError> {
     let txid = read_hash_le(raw_data, ix)?;
     let vout = read_4le(raw_data, ix)?;
-    let unlock_script = read_script(raw_data, ix)?;
+    let unlock_script = if is_coinbase {
+        InputScript::Coinbase(read_bytearray(raw_data, ix)?)
+    } else {
+        InputScript::Script(read_script(raw_data, ix)?)
+    };
     let sequence = read_4le(raw_data, ix)?;
 
     Ok(TransactionInput {

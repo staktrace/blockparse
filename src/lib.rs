@@ -148,10 +148,16 @@ pub struct Script {
 }
 
 #[derive(Debug)]
+pub enum InputScript {
+    Coinbase(Vec<u8>),
+    Script(Script),
+}
+
+#[derive(Debug)]
 pub struct TransactionInput {
     pub txid: Hash,
     pub vout: u32,
-    pub unlock_script: Script,
+    pub unlock_script: InputScript,
     pub sequence: u32,
     pub witness_stuff: Vec<Vec<u8>>,
 }
