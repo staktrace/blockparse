@@ -8,6 +8,7 @@ extern crate bitflags;
 use std::fmt;
 
 pub mod parse;
+pub mod script;
 
 #[derive(Debug)]
 pub enum Network {
@@ -148,16 +149,10 @@ pub struct Script {
 }
 
 #[derive(Debug)]
-pub enum InputScript {
-    Coinbase(Vec<u8>),
-    Script(Script),
-}
-
-#[derive(Debug)]
 pub struct TransactionInput {
     pub txid: Hash,
     pub vout: u32,
-    pub unlock_script: InputScript,
+    pub unlock_script: Vec<u8>,
     pub sequence: u32,
     pub witness_stuff: Vec<Vec<u8>>,
 }
@@ -165,7 +160,7 @@ pub struct TransactionInput {
 #[derive(Debug)]
 pub struct TransactionOutput {
     pub value: u64,
-    pub lock_script: Script,
+    pub lock_script: Vec<u8>,
 }
 
 #[derive(Debug)]

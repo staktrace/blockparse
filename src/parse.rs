@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::{Block, Hash, InputScript, Network, Opcode, Script, Transaction, TransactionFlags, TransactionInput, TransactionOutput};
+use crate::{Block, Hash, Network, Transaction, TransactionFlags, TransactionInput, TransactionOutput};
 
 #[derive(Debug)]
 pub struct BlockParseError {
@@ -23,7 +23,7 @@ impl fmt::Display for BlockParseError {
 impl std::error::Error for BlockParseError {
 }
 
-fn read_byte(bytes: &[u8], ix: &mut usize) -> Result<u8, BlockParseError> {
+pub(crate) fn read_byte(bytes: &[u8], ix: &mut usize) -> Result<u8, BlockParseError> {
     if bytes.len() < *ix + 1 {
         return Err(BlockParseError::new(format!("Unexpected end of input reading 1 byte at index {}", *ix)));
     }
@@ -32,7 +32,7 @@ fn read_byte(bytes: &[u8], ix: &mut usize) -> Result<u8, BlockParseError> {
     Ok(result)
 }
 
-fn read_2le(bytes: &[u8], ix: &mut usize) -> Result<u16, BlockParseError> {
+pub(crate) fn read_2le(bytes: &[u8], ix: &mut usize) -> Result<u16, BlockParseError> {
     if bytes.len() < *ix + 2 {
         return Err(BlockParseError::new(format!("Unexpected end of input reading 2 bytes at index {}", *ix)));
     }
@@ -42,7 +42,7 @@ fn read_2le(bytes: &[u8], ix: &mut usize) -> Result<u16, BlockParseError> {
     Ok(result)
 }
 
-fn read_4le(bytes: &[u8], ix: &mut usize) -> Result<u32, BlockParseError> {
+pub(crate) fn read_4le(bytes: &[u8], ix: &mut usize) -> Result<u32, BlockParseError> {
     if bytes.len() < *ix + 4 {
         return Err(BlockParseError::new(format!("Unexpected end of input reading 4 bytes at index {}", *ix)));
     }
@@ -54,7 +54,7 @@ fn read_4le(bytes: &[u8], ix: &mut usize) -> Result<u32, BlockParseError> {
     Ok(result)
 }
 
-fn read_8le(bytes: &[u8], ix: &mut usize) -> Result<u64, BlockParseError> {
+pub(crate) fn read_8le(bytes: &[u8], ix: &mut usize) -> Result<u64, BlockParseError> {
     if bytes.len() < *ix + 8 {
         return Err(BlockParseError::new(format!("Unexpected end of input reading 8 bytes at index {}", *ix)));
     }
@@ -70,7 +70,7 @@ fn read_8le(bytes: &[u8], ix: &mut usize) -> Result<u64, BlockParseError> {
     Ok(result)
 }
 
-fn read_hash_le(bytes: &[u8], ix: &mut usize) -> Result<Hash, BlockParseError> {
+pub(crate) fn read_hash_le(bytes: &[u8], ix: &mut usize) -> Result<Hash, BlockParseError> {
     if bytes.len() < *ix + 32 {
         return Err(BlockParseError::new(format!("Unexpected end of input reading 32 bytes at index {}", *ix)));
     }
@@ -96,7 +96,7 @@ fn read_txflags(bytes: &[u8], ix: &mut usize) -> Result<TransactionFlags, BlockP
     TransactionFlags::from_bits(b).ok_or_else(|| BlockParseError::new(format!("Unrecognized transaction flags at index {}", *ix - 1)))
 }
 
-trait IntoUsize {
+pub trait IntoUsize {
     fn usize(self) -> Result<usize, BlockParseError>;
 }
 
@@ -132,7 +132,7 @@ impl IntoUsize for u8 {
     }
 }
 
-fn read_bytes(bytes: &[u8], ix: &mut usize, count: usize) -> Result<Vec<u8>, BlockParseError> {
+pub(crate) fn read_bytes(bytes: &[u8], ix: &mut usize, count: usize) -> Result<Vec<u8>, BlockParseError> {
     let end = *ix + count;
     if bytes.len() < end {
         return Err(BlockParseError::new(format!("Unexpected end of input reading {} bytes at index {}", count, *ix)));
@@ -144,131 +144,33 @@ fn read_bytes(bytes: &[u8], ix: &mut usize, count: usize) -> Result<Vec<u8>, Blo
     Ok(result)
 }
 
-fn read_bytearray(bytes: &[u8], ix: &mut usize) -> Result<Vec<u8>, BlockParseError> {
+pub(crate) fn read_bytearray(bytes: &[u8], ix: &mut usize) -> Result<Vec<u8>, BlockParseError> {
     let count = read_compact_size(bytes, ix)?.usize()?;
     read_bytes(bytes, ix, count)
 }
 
-fn read_opcode(bytes: &[u8], ix: &mut usize) -> Result<Opcode, BlockParseError> {
-    match read_byte(bytes, ix)? {
-        v @ 0x00..=0x4b => Ok(Opcode::PushArray(read_bytes(bytes, ix, v.usize()?)?)),
-        0x4c => {
-            let count = read_byte(bytes, ix)?.usize()?;
-            Ok(Opcode::PushArray(read_bytes(bytes, ix, count)?))
-        }
-        0x4d => {
-            let count = read_2le(bytes, ix)?.usize()?;
-            Ok(Opcode::PushArray(read_bytes(bytes, ix, count)?))
-        }
-        0x4e => {
-            let count = read_4le(bytes, ix)?.usize()?;
-            Ok(Opcode::PushArray(read_bytes(bytes, ix, count)?))
-        }
-        v @ 0x4f => Ok(Opcode::PushNumber(v as i8 - 0x50)),
-        v @ 0x50 => Ok(Opcode::Reserved(v)),
-        v @ 0x51..=0x60 => Ok(Opcode::PushNumber(v as i8 - 0x50)),
-        v @ 0x61 => Ok(Opcode::Nop(v)),
-        0x62 => Ok(Opcode::Ver),
-        0x63 => Ok(Opcode::If),
-        0x64 => Ok(Opcode::NotIf),
-        0x65 => Ok(Opcode::VerIf),
-        0x66 => Ok(Opcode::VerNotIf),
-        0x67 => Ok(Opcode::Else),
-        0x68 => Ok(Opcode::EndIf),
-        0x69 => Ok(Opcode::Verify),
-        0x6a => Ok(Opcode::Return),
-        0x6b => Ok(Opcode::ToAltStack),
-        0x6c => Ok(Opcode::FromAltStack),
-        0x6d => Ok(Opcode::Drop2),
-        0x6e => Ok(Opcode::Dup2),
-        0x6f => Ok(Opcode::Dup3),
-        0x70 => Ok(Opcode::Over2),
-        0x71 => Ok(Opcode::Rot2),
-        0x72 => Ok(Opcode::Swap2),
-        0x73 => Ok(Opcode::IfDup),
-        0x74 => Ok(Opcode::Depth),
-        0x75 => Ok(Opcode::Drop),
-        0x76 => Ok(Opcode::Dup),
-        0x77 => Ok(Opcode::Nip),
-        0x78 => Ok(Opcode::Over),
-        0x79 => Ok(Opcode::Pick),
-        0x7a => Ok(Opcode::Roll),
-        0x7b => Ok(Opcode::Rot),
-        0x7c => Ok(Opcode::Swap),
-        0x7d => Ok(Opcode::Tuck),
-        0x7e => Ok(Opcode::Cat),
-        0x7f => Ok(Opcode::Substr),
-        0x80 => Ok(Opcode::Left),
-        0x81 => Ok(Opcode::Right),
-        0x82 => Ok(Opcode::Size),
-        0x83 => Ok(Opcode::Invert),
-        0x84 => Ok(Opcode::And),
-        0x85 => Ok(Opcode::Or),
-        0x86 => Ok(Opcode::Xor),
-        0x87 => Ok(Opcode::Equal),
-        0x88 => Ok(Opcode::EqualVerify),
-        v @ 0x89..=0x8a => Ok(Opcode::Reserved(v)),
-        0x8b => Ok(Opcode::Add1),
-        0x8c => Ok(Opcode::Sub1),
-        0x8d => Ok(Opcode::Mul2),
-        0x8e => Ok(Opcode::Div2),
-        0x8f => Ok(Opcode::Negate),
-        0x90 => Ok(Opcode::Abs),
-        0x91 => Ok(Opcode::Not),
-        0x92 => Ok(Opcode::NotEqual0),
-        0x93 => Ok(Opcode::Add),
-        0x94 => Ok(Opcode::Sub),
-        0x95 => Ok(Opcode::Mul),
-        0x96 => Ok(Opcode::Div),
-        0x97 => Ok(Opcode::Mod),
-        0x98 => Ok(Opcode::LeftShift),
-        0x99 => Ok(Opcode::RightShift),
-        0x9a => Ok(Opcode::BoolAnd),
-        0x9b => Ok(Opcode::BoolOr),
-        0x9c => Ok(Opcode::NumEqual),
-        0x9d => Ok(Opcode::NumEqualVerify),
-        0x9e => Ok(Opcode::NumNotEqual),
-        0x9f => Ok(Opcode::LessThan),
-        0xa0 => Ok(Opcode::GreaterThan),
-        0xa1 => Ok(Opcode::LessThanOrEqual),
-        0xa2 => Ok(Opcode::GreaterThanOrEqual),
-        0xa3 => Ok(Opcode::Min),
-        0xa4 => Ok(Opcode::Max),
-        0xa5 => Ok(Opcode::Within),
-        0xa6 => Ok(Opcode::RIPEMD160),
-        0xa7 => Ok(Opcode::SHA1),
-        0xa8 => Ok(Opcode::SHA256),
-        0xa9 => Ok(Opcode::Hash160),
-        0xaa => Ok(Opcode::Hash256),
-        0xab => Ok(Opcode::CodeSeparator),
-        0xac => Ok(Opcode::CheckSig),
-        0xad => Ok(Opcode::CheckSigVerify),
-        0xae => Ok(Opcode::CheckMultisig),
-        0xaf => Ok(Opcode::CheckMultisigVerify),
-        v @ 0xb0 => Ok(Opcode::Nop(v)),
-        0xb1 => Ok(Opcode::CheckLockTimeVerify),
-        0xb2 => Ok(Opcode::CheckSequenceVerify),
-        v @ 0xb3..=0xb9 => Ok(Opcode::Nop(v)),
-        v @ 0xba..=0xff => Ok(Opcode::Invalid(v)),
-    }
+fn read_transaction_input(raw_data: &[u8], ix: &mut usize) -> Result<TransactionInput, BlockParseError> {
+    let txid = read_hash_le(raw_data, ix)?;
+    let vout = read_4le(raw_data, ix)?;
+    let unlock_script = read_bytearray(raw_data, ix)?;
+    let sequence = read_4le(raw_data, ix)?;
+
+    Ok(TransactionInput {
+        txid,
+        vout,
+        unlock_script,
+        sequence,
+        witness_stuff: vec![],
+    })
 }
 
-fn read_script(bytes: &[u8], ix: &mut usize) -> Result<Script, BlockParseError> {
-    let count = read_compact_size(bytes, ix)?.usize()?;
-    let end = *ix + count;
+fn read_transaction_output(raw_data: &[u8], ix: &mut usize) -> Result<TransactionOutput, BlockParseError> {
+    let value = read_8le(raw_data, ix)?;
+    let lock_script = read_bytearray(raw_data, ix)?;
 
-    if bytes.len() < end {
-        return Err(BlockParseError::new(format!("Unexpected end of input reading {} bytes at index {}", count, *ix)));
-    }
-    let mut opcodes = Vec::new();
-    while *ix < end {
-        opcodes.push(read_opcode(bytes, ix)?);
-    }
-    if *ix != end {
-        return Err(BlockParseError::new(format!("Unexpected index after script; expected {} but got {}", end, *ix)));
-    }
-    Ok(Script {
-        opcodes,
+    Ok(TransactionOutput {
+        value,
+        lock_script,
     })
 }
 
@@ -295,8 +197,8 @@ pub fn parse_block(raw_data: &[u8], ix: &mut usize) -> Result<Block, BlockParseE
 
     let transaction_count = read_compact_size(raw_data, ix)?.usize()?;
     let mut transactions = Vec::with_capacity(transaction_count);
-    for transaction in 0..transaction_count {
-        transactions.push(parse_transaction(raw_data, ix, transaction == 0)?);
+    for _ in 0..transaction_count {
+        transactions.push(parse_transaction(raw_data, ix)?);
     }
 
     if *ix != end {
@@ -315,7 +217,7 @@ pub fn parse_block(raw_data: &[u8], ix: &mut usize) -> Result<Block, BlockParseE
     })
 }
 
-pub fn parse_transaction(raw_data: &[u8], ix: &mut usize, is_coinbase: bool) -> Result<Transaction, BlockParseError> {
+pub fn parse_transaction(raw_data: &[u8], ix: &mut usize) -> Result<Transaction, BlockParseError> {
     let version = read_4le(raw_data, ix)?;
     let count = read_compact_size(raw_data, ix)?.usize()?;
     let (flags, input_count) = if count == 0 /* && allow_witness*/ {
@@ -325,12 +227,12 @@ pub fn parse_transaction(raw_data: &[u8], ix: &mut usize, is_coinbase: bool) -> 
     };
     let mut inputs = Vec::with_capacity(input_count);
     for _ in 0..input_count {
-        inputs.push(parse_transaction_input(raw_data, ix, is_coinbase)?);
+        inputs.push(read_transaction_input(raw_data, ix)?);
     }
     let output_count = read_compact_size(raw_data, ix)?.usize()?;
     let mut outputs = Vec::with_capacity(output_count);
     for _ in 0..output_count {
-        outputs.push(parse_transaction_output(raw_data, ix)?);
+        outputs.push(read_transaction_output(raw_data, ix)?);
     }
     if flags.contains(TransactionFlags::WITNESS) {
         for input in inputs.iter_mut() {
@@ -350,35 +252,6 @@ pub fn parse_transaction(raw_data: &[u8], ix: &mut usize, is_coinbase: bool) -> 
         inputs,
         outputs,
         locktime,
-    })
-}
-
-fn parse_transaction_input(raw_data: &[u8], ix: &mut usize, is_coinbase: bool) -> Result<TransactionInput, BlockParseError> {
-    let txid = read_hash_le(raw_data, ix)?;
-    let vout = read_4le(raw_data, ix)?;
-    let unlock_script = if is_coinbase {
-        InputScript::Coinbase(read_bytearray(raw_data, ix)?)
-    } else {
-        InputScript::Script(read_script(raw_data, ix)?)
-    };
-    let sequence = read_4le(raw_data, ix)?;
-
-    Ok(TransactionInput {
-        txid,
-        vout,
-        unlock_script,
-        sequence,
-        witness_stuff: vec![],
-    })
-}
-
-fn parse_transaction_output(raw_data: &[u8], ix: &mut usize) -> Result<TransactionOutput, BlockParseError> {
-    let value = read_8le(raw_data, ix)?;
-    let lock_script = read_script(raw_data, ix)?;
-
-    Ok(TransactionOutput {
-        value,
-        lock_script,
     })
 }
 
@@ -404,5 +277,9 @@ mod tests {
         let block_481829 = parse_blockfile(&read_testdata("block_481829.dat")).unwrap().pop().unwrap();
         assert_eq!(block_481829.merkle_root.to_string(), "f06f697be2cac7af7ed8cd0b0b81eaa1a39e444c6ebd3697e35ab34461b6c58d");
         assert_eq!(block_481829.transactions.len(), 2020);
+
+        let block_265458 = parse_blockfile(&read_testdata("block_265458.dat")).unwrap().pop().unwrap();
+        assert_eq!(block_265458.merkle_root.to_string(), "501174c68520c1d23bea38774b2dac1d26d4a6c34daef6638762731e78ab1c06");
+        assert_eq!(block_265458.transactions.len(), 320);
     }
 }
