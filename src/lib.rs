@@ -4,11 +4,16 @@
 
 #[macro_use]
 extern crate bitflags;
+extern crate hmac_sha256;
 
 use std::fmt;
 
 pub mod parse;
 pub mod script;
+
+pub(crate) trait Serialize {
+    fn serialize(&self) -> Vec<u8>;
+}
 
 #[derive(Debug)]
 pub enum Network {
@@ -28,8 +33,37 @@ impl Network {
     }
 }
 
+impl Serialize for Network {
+    fn serialize(&self) -> Vec<u8> {
+        match self {
+            Network::MainNet => vec![0xf9, 0xbe, 0xb4, 0xd9],
+            Network::TestNet3 => vec![0x0b, 0x11, 0x09, 0x07],
+            Network::RegTest => vec![0xfa, 0xbf, 0xb5, 0xda],
+        }
+    }
+}
+
+impl Serialize for u32 {
+    fn serialize(&self) -> Vec<u8> {
+        vec![
+            (self & 0xff) as u8,
+            ((self >> 8) & 0xff) as u8,
+            ((self >> 16) & 0xff) as u8,
+            ((self >> 24) & 0xff) as u8,
+        ]
+    }
+}
+
 #[derive(Debug)]
 pub struct Hash([u8; 32]);
+
+impl Serialize for Hash {
+    fn serialize(&self) -> Vec<u8> {
+        let mut little_endian = self.0;
+        little_endian.reverse();
+        little_endian.into()
+    }
+}
 
 impl fmt::Display for Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -184,8 +218,24 @@ pub struct Block {
     pub transactions: Vec<Transaction>,
 }
 
+impl Block {
+    pub fn hash(&self) -> Hash {
+        let mut hasher = hmac_sha256::Hash::new();
+        hasher.update(&self.version.serialize());
+        hasher.update(&self.prev_block_hash.serialize());
+        hasher.update(&self.merkle_root.serialize());
+        hasher.update(&self.time.serialize());
+        hasher.update(&self.bits.serialize());
+        hasher.update(&self.nonce.serialize());
+        let first_hash = hasher.finalize();
+        let mut second_hash = hmac_sha256::Hash::hash(&first_hash);
+        second_hash.reverse();
+        Hash(second_hash)
+    }
+}
+
 impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "time:{} prev:{} merkle:{} bits:{} nonce:{}", self.time, self.prev_block_hash, self.merkle_root, self.bits, self.nonce)
+        write!(f, "time:{} hash:{} prev:{} merkle:{} bits:{} nonce:{}", self.time, self.hash(), self.prev_block_hash, self.merkle_root, self.bits, self.nonce)
     }
 }

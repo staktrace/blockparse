@@ -9,3 +9,4 @@ license = "0BSD"
 
 [dependencies]
 bitflags = "1.0"
+hmac-sha256 = "1.1.4"

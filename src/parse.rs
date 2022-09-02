@@ -96,7 +96,7 @@ fn read_txflags(bytes: &[u8], ix: &mut usize) -> Result<TransactionFlags, BlockP
     TransactionFlags::from_bits(b).ok_or_else(|| BlockParseError::new(format!("Unrecognized transaction flags at index {}", *ix - 1)))
 }
 
-pub trait IntoUsize {
+pub(crate) trait IntoUsize {
     fn usize(self) -> Result<usize, BlockParseError>;
 }
 
