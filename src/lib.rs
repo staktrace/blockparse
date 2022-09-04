@@ -367,6 +367,6 @@ impl Block {
 
 impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "time:{} id:{} prev:{} merkle:{} bits:{} nonce:{}", self.time, self.id(), self.prev_block_hash, self.merkle_root, self.bits, self.nonce)?;
+        write!(f, "time:{} id:{} prev:{} merkle:{} bits:{} nonce:{}", self.time, self.id(), self.prev_block_hash, self.merkle_root, self.bits, self.nonce)
     }
 }
