@@ -1,27 +1,4 @@
-use std::fmt;
-use crate::{Block, BlockHeader, Hash, Network, Transaction, TransactionFlags, TransactionInput, TransactionOutput};
-
-#[derive(Debug)]
-pub struct BlockParseError {
-    msg: String,
-}
-
-impl BlockParseError {
-    pub(crate) fn new(msg: String) -> Self {
-        BlockParseError {
-            msg,
-        }
-    }
-}
-
-impl fmt::Display for BlockParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.msg)
-    }
-}
-
-impl std::error::Error for BlockParseError {
-}
+use crate::{Block, BlockHeader, BlockParseError, Hash, Network, Transaction, TransactionFlags, TransactionInput, TransactionOutput};
 
 pub(crate) fn read_byte(bytes: &[u8], ix: &mut usize) -> Result<u8, BlockParseError> {
     if bytes.len() < *ix + 1 {

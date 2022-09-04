@@ -6,11 +6,14 @@
 extern crate bitflags;
 extern crate hmac_sha256;
 
-use std::fmt;
-
+pub mod error;
 pub mod hash;
 pub mod parse;
 pub mod script;
+
+pub use error::BlockParseError;
+
+use std::fmt;
 
 pub(crate) trait SerializeLittleEndian {
     fn serialize_le(&self, dest: &mut Vec<u8>);

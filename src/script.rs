@@ -1,5 +1,5 @@
-use crate::{Opcode, Script};
-use crate::parse::{BlockParseError, read_byte, read_bytes, read_2le, read_4le, IntoUsize};
+use crate::{BlockParseError, Opcode, Script};
+use crate::parse::{read_byte, read_bytes, read_2le, read_4le, IntoUsize};
 
 fn read_opcode(bytes: &[u8], ix: &mut usize) -> Result<Opcode, BlockParseError> {
     match read_byte(bytes, ix)? {
