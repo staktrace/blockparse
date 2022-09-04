@@ -43,6 +43,15 @@ impl SerializeLittleEndian for Network {
     }
 }
 
+impl SerializeLittleEndian for u16 {
+    fn serialize_le(&self) -> Vec<u8> {
+        vec![
+            (self & 0xff) as u8,
+            ((self >> 8) & 0xff) as u8,
+        ]
+    }
+}
+
 impl SerializeLittleEndian for u32 {
     fn serialize_le(&self) -> Vec<u8> {
         vec![
@@ -54,8 +63,49 @@ impl SerializeLittleEndian for u32 {
     }
 }
 
-#[derive(Debug)]
+impl SerializeLittleEndian for u64 {
+    fn serialize_le(&self) -> Vec<u8> {
+        vec![
+            (self & 0xff) as u8,
+            ((self >> 8) & 0xff) as u8,
+            ((self >> 16) & 0xff) as u8,
+            ((self >> 24) & 0xff) as u8,
+            ((self >> 32) & 0xff) as u8,
+            ((self >> 40) & 0xff) as u8,
+            ((self >> 48) & 0xff) as u8,
+            ((self >> 56) & 0xff) as u8,
+        ]
+    }
+}
+
+impl SerializeLittleEndian for usize {
+    fn serialize_le(&self) -> Vec<u8> {
+        if *self <= 0xfc {
+            vec![*self as u8]
+        } else if *self <= 0xffff {
+            [vec![0xfd], (*self as u16).serialize_le()].concat()
+        } else if *self <= 0xffffffff {
+            [vec![0xfe], (*self as u32).serialize_le()].concat()
+        } else {
+            [vec![0xff], (*self as u64).serialize_le()].concat()
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct Hash([u8; 32]);
+
+impl Hash {
+    pub fn zero() -> Self {
+        Hash([0; 32])
+    }
+
+    pub fn reverse(&self) -> Self {
+        let mut hash_bytes = self.0;
+        hash_bytes.reverse();
+        Hash(hash_bytes)
+    }
+}
 
 impl SerializeLittleEndian for Hash {
     fn serialize_le(&self) -> Vec<u8> {
@@ -206,6 +256,44 @@ pub struct Transaction {
     pub locktime: u32,
 }
 
+impl Transaction {
+    pub fn double_hash(&self) -> Hash {
+        let mut hasher = hmac_sha256::Hash::new();
+        hasher.update(&self.version.serialize_le());
+        if !self.flags.is_empty() {
+            hasher.update(&[0]);
+            hasher.update(&[self.flags.bits()]);
+        }
+        hasher.update(&self.inputs.len().serialize_le());
+        for input in &self.inputs {
+            hasher.update(&input.txid.serialize_le());
+            hasher.update(&input.vout.serialize_le());
+            hasher.update(&input.unlock_script.len().serialize_le());
+            hasher.update(&input.unlock_script);
+            hasher.update(&input.sequence.serialize_le());
+        }
+        hasher.update(&self.outputs.len().serialize_le());
+        for output in &self.outputs {
+            hasher.update(&output.value.serialize_le());
+            hasher.update(&output.lock_script.len().serialize_le());
+            hasher.update(&output.lock_script);
+        }
+        if self.flags.contains(TransactionFlags::WITNESS) {
+            for input in &self.inputs {
+                hasher.update(&input.witness_stuff.len().serialize_le());
+                for witness in &input.witness_stuff {
+                    hasher.update(&witness.len().serialize_le());
+                    hasher.update(witness);
+                }
+            }
+        }
+        hasher.update(&self.locktime.serialize_le());
+
+        let first_hash = hasher.finalize();
+        Hash(hmac_sha256::Hash::hash(&first_hash)).reverse()
+    }
+}
+
 #[derive(Debug)]
 pub struct Block {
     pub network: Network,
@@ -232,14 +320,53 @@ impl Block {
         hasher.update(&self.bits.serialize_le());
         hasher.update(&self.nonce.serialize_le());
         let first_hash = hasher.finalize();
-        let mut second_hash = hmac_sha256::Hash::hash(&first_hash);
-        second_hash.reverse();
-        Hash(second_hash)
+        Hash(hmac_sha256::Hash::hash(&first_hash)).reverse()
+    }
+
+    pub fn computed_merkle_root(&self) -> Hash {
+        if self.transactions.is_empty() {
+            return Hash::zero();
+        }
+
+        let adjust_count = |count| {
+            match count {
+                1 => 1,
+                c if (c % 2) == 1 => c + 1,
+                c => c,
+            }
+        };
+
+        let mut layer_size = adjust_count(self.transactions.len());
+        let mut layer_hashes = Vec::with_capacity(layer_size);
+        for transaction in &self.transactions {
+            layer_hashes.push(transaction.double_hash().reverse());
+        }
+        while layer_size > layer_hashes.len() {
+            layer_hashes.push(*layer_hashes.last().unwrap());
+        }
+
+        while layer_size > 1 {
+            let next_layer_size = adjust_count(layer_size / 2);
+            let mut next_hashes = Vec::with_capacity(next_layer_size);
+            for i in 0..next_layer_size {
+                let mut next_hash = hmac_sha256::Hash::new();
+                next_hash.update(layer_hashes[i * 2].0);
+                next_hash.update(layer_hashes[i * 2 + 1].0);
+                let first_hash = next_hash.finalize();
+                let second_hash = hmac_sha256::Hash::hash(&first_hash);
+                next_hashes.push(Hash(second_hash));
+            }
+
+            layer_size = next_layer_size;
+            layer_hashes = next_hashes;
+        }
+
+        layer_hashes.first().unwrap().reverse()
     }
 }
 
 impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "time:{} id:{} prev:{} merkle:{} bits:{} nonce:{}", self.time, self.id(), self.prev_block_hash, self.merkle_root, self.bits, self.nonce)
+        write!(f, "time:{} id:{} prev:{} merkle:{} bits:{} nonce:{}", self.time, self.id(), self.prev_block_hash, self.merkle_root, self.bits, self.nonce)?;
     }
 }
