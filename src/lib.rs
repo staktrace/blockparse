@@ -12,7 +12,7 @@ pub mod parse;
 pub mod script;
 
 pub(crate) trait SerializeLittleEndian {
-    fn serialize_le(&self) -> Vec<u8>;
+    fn serialize_le(&self, dest: &mut Vec<u8>);
 }
 
 #[derive(Debug)]
@@ -34,60 +34,57 @@ impl Network {
 }
 
 impl SerializeLittleEndian for Network {
-    fn serialize_le(&self) -> Vec<u8> {
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
         match self {
-            Network::MainNet => vec![0xf9, 0xbe, 0xb4, 0xd9],
-            Network::TestNet3 => vec![0x0b, 0x11, 0x09, 0x07],
-            Network::RegTest => vec![0xfa, 0xbf, 0xb5, 0xda],
+            Network::MainNet => dest.extend(vec![0xf9, 0xbe, 0xb4, 0xd9]),
+            Network::TestNet3 => dest.extend(vec![0x0b, 0x11, 0x09, 0x07]),
+            Network::RegTest => dest.extend(vec![0xfa, 0xbf, 0xb5, 0xda]),
         }
     }
 }
 
 impl SerializeLittleEndian for u16 {
-    fn serialize_le(&self) -> Vec<u8> {
-        vec![
-            (self & 0xff) as u8,
-            ((self >> 8) & 0xff) as u8,
-        ]
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
+        dest.push((self & 0xff) as u8);
+        dest.push(((self >> 8) & 0xff) as u8);
     }
 }
 
 impl SerializeLittleEndian for u32 {
-    fn serialize_le(&self) -> Vec<u8> {
-        vec![
-            (self & 0xff) as u8,
-            ((self >> 8) & 0xff) as u8,
-            ((self >> 16) & 0xff) as u8,
-            ((self >> 24) & 0xff) as u8,
-        ]
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
+        dest.push((self & 0xff) as u8);
+        dest.push(((self >> 8) & 0xff) as u8);
+        dest.push(((self >> 16) & 0xff) as u8);
+        dest.push(((self >> 24) & 0xff) as u8);
     }
 }
 
 impl SerializeLittleEndian for u64 {
-    fn serialize_le(&self) -> Vec<u8> {
-        vec![
-            (self & 0xff) as u8,
-            ((self >> 8) & 0xff) as u8,
-            ((self >> 16) & 0xff) as u8,
-            ((self >> 24) & 0xff) as u8,
-            ((self >> 32) & 0xff) as u8,
-            ((self >> 40) & 0xff) as u8,
-            ((self >> 48) & 0xff) as u8,
-            ((self >> 56) & 0xff) as u8,
-        ]
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
+        dest.push((self & 0xff) as u8);
+        dest.push(((self >> 8) & 0xff) as u8);
+        dest.push(((self >> 16) & 0xff) as u8);
+        dest.push(((self >> 24) & 0xff) as u8);
+        dest.push(((self >> 32) & 0xff) as u8);
+        dest.push(((self >> 40) & 0xff) as u8);
+        dest.push(((self >> 48) & 0xff) as u8);
+        dest.push(((self >> 56) & 0xff) as u8);
     }
 }
 
 impl SerializeLittleEndian for usize {
-    fn serialize_le(&self) -> Vec<u8> {
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
         if *self <= 0xfc {
-            vec![*self as u8]
+            dest.push(*self as u8);
         } else if *self <= 0xffff {
-            [vec![0xfd], (*self as u16).serialize_le()].concat()
+            dest.push(0xfd);
+            (*self as u16).serialize_le(dest);
         } else if *self <= 0xffffffff {
-            [vec![0xfe], (*self as u32).serialize_le()].concat()
+            dest.push(0xfe);
+            (*self as u32).serialize_le(dest);
         } else {
-            [vec![0xff], (*self as u64).serialize_le()].concat()
+            dest.push(0xff);
+            (*self as u64).serialize_le(dest);
         }
     }
 }
@@ -108,10 +105,8 @@ impl Hash {
 }
 
 impl SerializeLittleEndian for Hash {
-    fn serialize_le(&self) -> Vec<u8> {
-        let mut little_endian = self.0;
-        little_endian.reverse();
-        little_endian.into()
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
+        dest.extend(self.0.iter().rev());
     }
 }
 
@@ -256,40 +251,46 @@ pub struct Transaction {
     pub locktime: u32,
 }
 
-impl Transaction {
-    pub fn double_hash(&self) -> Hash {
-        let mut hasher = hmac_sha256::Hash::new();
-        hasher.update(&self.version.serialize_le());
+impl SerializeLittleEndian for Transaction {
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
+        self.version.serialize_le(dest);
         if !self.flags.is_empty() {
-            hasher.update(&[0]);
-            hasher.update(&[self.flags.bits()]);
+            dest.push(0);
+            dest.push(self.flags.bits());
         }
-        hasher.update(&self.inputs.len().serialize_le());
+        self.inputs.len().serialize_le(dest);
         for input in &self.inputs {
-            hasher.update(&input.txid.serialize_le());
-            hasher.update(&input.vout.serialize_le());
-            hasher.update(&input.unlock_script.len().serialize_le());
-            hasher.update(&input.unlock_script);
-            hasher.update(&input.sequence.serialize_le());
+            input.txid.serialize_le(dest);
+            input.vout.serialize_le(dest);
+            input.unlock_script.len().serialize_le(dest);
+            dest.extend(&input.unlock_script);
+            input.sequence.serialize_le(dest);
         }
-        hasher.update(&self.outputs.len().serialize_le());
+        self.outputs.len().serialize_le(dest);
         for output in &self.outputs {
-            hasher.update(&output.value.serialize_le());
-            hasher.update(&output.lock_script.len().serialize_le());
-            hasher.update(&output.lock_script);
+            output.value.serialize_le(dest);
+            output.lock_script.len().serialize_le(dest);
+            dest.extend(&output.lock_script);
         }
         if self.flags.contains(TransactionFlags::WITNESS) {
             for input in &self.inputs {
-                hasher.update(&input.witness_stuff.len().serialize_le());
+                input.witness_stuff.len().serialize_le(dest);
                 for witness in &input.witness_stuff {
-                    hasher.update(&witness.len().serialize_le());
-                    hasher.update(witness);
+                    witness.len().serialize_le(dest);
+                    dest.extend(witness);
                 }
             }
         }
-        hasher.update(&self.locktime.serialize_le());
+        self.locktime.serialize_le(dest);
+    }
+}
 
-        let first_hash = hasher.finalize();
+impl Transaction {
+    pub fn double_hash(&self) -> Hash {
+        let mut serialized = Vec::new();
+        self.serialize_le(&mut serialized);
+
+        let first_hash = hmac_sha256::Hash::hash(&serialized);
         Hash(hmac_sha256::Hash::hash(&first_hash)).reverse()
     }
 }
@@ -312,14 +313,15 @@ impl Block {
     }
 
     fn double_hash(&self) -> Hash {
-        let mut hasher = hmac_sha256::Hash::new();
-        hasher.update(&self.version.serialize_le());
-        hasher.update(&self.prev_block_hash.serialize_le());
-        hasher.update(&self.merkle_root.serialize_le());
-        hasher.update(&self.time.serialize_le());
-        hasher.update(&self.bits.serialize_le());
-        hasher.update(&self.nonce.serialize_le());
-        let first_hash = hasher.finalize();
+        let mut serialized = Vec::new();
+        self.version.serialize_le(&mut serialized);
+        self.prev_block_hash.serialize_le(&mut serialized);
+        self.merkle_root.serialize_le(&mut serialized);
+        self.time.serialize_le(&mut serialized);
+        self.bits.serialize_le(&mut serialized);
+        self.nonce.serialize_le(&mut serialized);
+
+        let first_hash = hmac_sha256::Hash::hash(&serialized);
         Hash(hmac_sha256::Hash::hash(&first_hash)).reverse()
     }
 
