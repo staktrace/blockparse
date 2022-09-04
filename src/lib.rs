@@ -8,6 +8,7 @@ extern crate hmac_sha256;
 
 use std::fmt;
 
+pub mod hash;
 pub mod parse;
 pub mod script;
 
@@ -285,16 +286,6 @@ impl SerializeLittleEndian for Transaction {
     }
 }
 
-impl Transaction {
-    pub fn double_hash(&self) -> Hash {
-        let mut serialized = Vec::new();
-        self.serialize_le(&mut serialized);
-
-        let first_hash = hmac_sha256::Hash::hash(&serialized);
-        Hash(hmac_sha256::Hash::hash(&first_hash)).reverse()
-    }
-}
-
 #[derive(Debug)]
 pub struct BlockHeader {
     pub version: u32,
@@ -325,15 +316,7 @@ pub struct Block {
 
 impl Block {
     pub fn id(&self) -> Hash {
-        self.double_hash()
-    }
-
-    fn double_hash(&self) -> Hash {
-        let mut serialized = Vec::new();
-        self.header.serialize_le(&mut serialized);
-
-        let first_hash = hmac_sha256::Hash::hash(&serialized);
-        Hash(hmac_sha256::Hash::hash(&first_hash)).reverse()
+        hash::double_sha256(&self.header)
     }
 
     pub fn computed_merkle_root(&self) -> Hash {
@@ -352,7 +335,7 @@ impl Block {
         let mut layer_size = adjust_count(self.transactions.len());
         let mut layer_hashes = Vec::with_capacity(layer_size);
         for transaction in &self.transactions {
-            layer_hashes.push(transaction.double_hash().reverse());
+            layer_hashes.push(hash::double_sha256(transaction).reverse());
         }
         while layer_size > layer_hashes.len() {
             layer_hashes.push(*layer_hashes.last().unwrap());
