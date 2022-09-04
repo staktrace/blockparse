@@ -219,7 +219,11 @@ pub struct Block {
 }
 
 impl Block {
-    pub fn hash(&self) -> Hash {
+    pub fn id(&self) -> Hash {
+        self.double_hash()
+    }
+
+    fn double_hash(&self) -> Hash {
         let mut hasher = hmac_sha256::Hash::new();
         hasher.update(&self.version.serialize_le());
         hasher.update(&self.prev_block_hash.serialize_le());
@@ -236,6 +240,6 @@ impl Block {
 
 impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "time:{} hash:{} prev:{} merkle:{} bits:{} nonce:{}", self.time, self.hash(), self.prev_block_hash, self.merkle_root, self.bits, self.nonce)
+        write!(f, "time:{} id:{} prev:{} merkle:{} bits:{} nonce:{}", self.time, self.id(), self.prev_block_hash, self.merkle_root, self.bits, self.nonce)
     }
 }
