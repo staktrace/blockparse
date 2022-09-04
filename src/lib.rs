@@ -296,14 +296,30 @@ impl Transaction {
 }
 
 #[derive(Debug)]
-pub struct Block {
-    pub network: Network,
+pub struct BlockHeader {
     pub version: u32,
     pub prev_block_hash: Hash,
     pub merkle_root: Hash,
     pub time: u32,
     pub bits: u32,
     pub nonce: u32,
+}
+
+impl SerializeLittleEndian for BlockHeader {
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
+        self.version.serialize_le(dest);
+        self.prev_block_hash.serialize_le(dest);
+        self.merkle_root.serialize_le(dest);
+        self.time.serialize_le(dest);
+        self.bits.serialize_le(dest);
+        self.nonce.serialize_le(dest);
+    }
+}
+
+#[derive(Debug)]
+pub struct Block {
+    pub network: Network,
+    pub header: BlockHeader,
     pub transactions: Vec<Transaction>,
 }
 
@@ -314,12 +330,7 @@ impl Block {
 
     fn double_hash(&self) -> Hash {
         let mut serialized = Vec::new();
-        self.version.serialize_le(&mut serialized);
-        self.prev_block_hash.serialize_le(&mut serialized);
-        self.merkle_root.serialize_le(&mut serialized);
-        self.time.serialize_le(&mut serialized);
-        self.bits.serialize_le(&mut serialized);
-        self.nonce.serialize_le(&mut serialized);
+        self.header.serialize_le(&mut serialized);
 
         let first_hash = hmac_sha256::Hash::hash(&serialized);
         Hash(hmac_sha256::Hash::hash(&first_hash)).reverse()
@@ -369,6 +380,6 @@ impl Block {
 
 impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "time:{} id:{} prev:{} merkle:{} bits:{} nonce:{}", self.time, self.id(), self.prev_block_hash, self.merkle_root, self.bits, self.nonce)
+        write!(f, "time:{} id:{} prev:{} merkle:{} bits:{} nonce:{}", self.header.time, self.id(), self.header.prev_block_hash, self.header.merkle_root, self.header.bits, self.header.nonce)
     }
 }

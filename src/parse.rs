@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::{Block, Hash, Network, Transaction, TransactionFlags, TransactionInput, TransactionOutput};
+use crate::{Block, BlockHeader, Hash, Network, Transaction, TransactionFlags, TransactionInput, TransactionOutput};
 
 #[derive(Debug)]
 pub struct BlockParseError {
@@ -188,13 +188,8 @@ pub fn parse_block(raw_data: &[u8], ix: &mut usize) -> Result<Block, BlockParseE
     let network = Network::from(magic).ok_or_else(|| BlockParseError::new(format!("Unrecognized network magic value {:#x} at index {}", magic, *ix - 4)))?;
     let size = read_4le(raw_data, ix)?.usize()?;
     let end = *ix + size;
-    let version = read_4le(raw_data, ix)?;
-    let prev_block_hash = read_hash_le(raw_data, ix)?;
-    let merkle_root = read_hash_le(raw_data, ix)?;
-    let time = read_4le(raw_data, ix)?;
-    let bits = read_4le(raw_data, ix)?;
-    let nonce = read_4le(raw_data, ix)?;
 
+    let header = parse_block_header(raw_data, ix)?;
     let transaction_count = read_compact_size(raw_data, ix)?.usize()?;
     let mut transactions = Vec::with_capacity(transaction_count);
     for _ in 0..transaction_count {
@@ -207,13 +202,26 @@ pub fn parse_block(raw_data: &[u8], ix: &mut usize) -> Result<Block, BlockParseE
 
     Ok(Block {
         network,
+        header,
+        transactions,
+    })
+}
+
+pub fn parse_block_header(raw_data: &[u8], ix: &mut usize) -> Result<BlockHeader, BlockParseError> {
+    let version = read_4le(raw_data, ix)?;
+    let prev_block_hash = read_hash_le(raw_data, ix)?;
+    let merkle_root = read_hash_le(raw_data, ix)?;
+    let time = read_4le(raw_data, ix)?;
+    let bits = read_4le(raw_data, ix)?;
+    let nonce = read_4le(raw_data, ix)?;
+
+    Ok(BlockHeader {
         version,
         prev_block_hash,
         merkle_root,
         time,
         bits,
         nonce,
-        transactions,
     })
 }
 
