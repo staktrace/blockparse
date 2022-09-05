@@ -1,4 +1,231 @@
-use crate::{Block, BlockHeader, BlockParseError, Hash, Network, Transaction, TransactionFlags, TransactionInput, TransactionOutput};
+use crate::{Block, BlockHeader, BlockParseError, Hash, LittleEndianSerialization, Network, Transaction, TransactionFlags, TransactionInput, TransactionOutput};
+
+impl LittleEndianSerialization for Network {
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
+        match self {
+            Network::MainNet => dest.extend(vec![0xf9, 0xbe, 0xb4, 0xd9]),
+            Network::TestNet3 => dest.extend(vec![0x0b, 0x11, 0x09, 0x07]),
+            Network::RegTest => dest.extend(vec![0xfa, 0xbf, 0xb5, 0xda]),
+        }
+    }
+
+    fn deserialize_le(bytes: &[u8], ix: &mut usize) -> Result<Self, BlockParseError> where Self: Sized {
+        let magic = u32::deserialize_le(bytes, ix)?;
+        Network::from(magic).ok_or_else(|| BlockParseError::new(format!("Unrecognized network magic value {:#x} at index {}", magic, *ix - 4)))
+    }
+}
+
+impl LittleEndianSerialization for u16 {
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
+        dest.push((self & 0xff) as u8);
+        dest.push(((self >> 8) & 0xff) as u8);
+    }
+
+    fn deserialize_le(bytes: &[u8], ix: &mut usize) -> Result<Self, BlockParseError> where Self: Sized {
+        if bytes.len() < *ix + 2 {
+            return Err(BlockParseError::new(format!("Unexpected end of input reading 2 bytes at index {}", *ix)));
+        }
+        let result = ((bytes[*ix + 1] as u16) << 8)
+            | (bytes[*ix] as u16);
+        *ix += 2;
+        Ok(result)
+    }
+}
+
+impl LittleEndianSerialization for u32 {
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
+        dest.push((self & 0xff) as u8);
+        dest.push(((self >> 8) & 0xff) as u8);
+        dest.push(((self >> 16) & 0xff) as u8);
+        dest.push(((self >> 24) & 0xff) as u8);
+    }
+
+    fn deserialize_le(bytes: &[u8], ix: &mut usize) -> Result<Self, BlockParseError> where Self: Sized {
+        if bytes.len() < *ix + 4 {
+            return Err(BlockParseError::new(format!("Unexpected end of input reading 4 bytes at index {}", *ix)));
+        }
+        let result = ((bytes[*ix + 3] as u32) << 24)
+            | ((bytes[*ix + 2] as u32) << 16)
+            | ((bytes[*ix + 1] as u32) << 8)
+            | (bytes[*ix] as u32);
+        *ix += 4;
+        Ok(result)
+    }
+}
+
+impl LittleEndianSerialization for u64 {
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
+        dest.push((self & 0xff) as u8);
+        dest.push(((self >> 8) & 0xff) as u8);
+        dest.push(((self >> 16) & 0xff) as u8);
+        dest.push(((self >> 24) & 0xff) as u8);
+        dest.push(((self >> 32) & 0xff) as u8);
+        dest.push(((self >> 40) & 0xff) as u8);
+        dest.push(((self >> 48) & 0xff) as u8);
+        dest.push(((self >> 56) & 0xff) as u8);
+    }
+
+    fn deserialize_le(bytes: &[u8], ix: &mut usize) -> Result<Self, BlockParseError> where Self: Sized {
+        if bytes.len() < *ix + 8 {
+            return Err(BlockParseError::new(format!("Unexpected end of input reading 8 bytes at index {}", *ix)));
+        }
+        let result = ((bytes[*ix + 7] as u64) << 56)
+            | ((bytes[*ix + 6] as u64) << 48)
+            | ((bytes[*ix + 5] as u64) << 40)
+            | ((bytes[*ix + 4] as u64) << 32)
+            | ((bytes[*ix + 3] as u64) << 24)
+            | ((bytes[*ix + 2] as u64) << 16)
+            | ((bytes[*ix + 1] as u64) << 8)
+            | (bytes[*ix] as u64);
+        *ix += 8;
+        Ok(result)
+    }
+}
+
+impl LittleEndianSerialization for usize {
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
+        if *self <= 0xfc {
+            dest.push(*self as u8);
+        } else if *self <= 0xffff {
+            dest.push(0xfd);
+            (*self as u16).serialize_le(dest);
+        } else if *self <= 0xffffffff {
+            dest.push(0xfe);
+            (*self as u32).serialize_le(dest);
+        } else {
+            dest.push(0xff);
+            (*self as u64).serialize_le(dest);
+        }
+    }
+
+    fn deserialize_le(bytes: &[u8], ix: &mut usize) -> Result<Self, BlockParseError> where Self: Sized {
+        match read_byte(bytes, ix)? {
+            val @ 0..=0xfc => Ok(val as u64),
+            0xfd => u16::deserialize_le(bytes, ix).map(|x| x as u64),
+            0xfe => u32::deserialize_le(bytes, ix).map(|x| x as u64),
+            0xff => u64::deserialize_le(bytes, ix),
+        }?.usize()
+    }
+}
+
+impl LittleEndianSerialization for Hash {
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
+        dest.extend(self.0.iter().rev());
+    }
+
+    fn deserialize_le(bytes: &[u8], ix: &mut usize) -> Result<Self, BlockParseError> where Self: Sized {
+        if bytes.len() < *ix + 32 {
+            return Err(BlockParseError::new(format!("Unexpected end of input reading 32 bytes at index {}", *ix)));
+        }
+        let mut hash = [0; 32];
+        for i in 0..32 {
+            hash[i] = bytes[*ix + 31 - i];
+        }
+        *ix += 32;
+        Ok(Hash(hash))
+    }
+}
+
+impl LittleEndianSerialization for Transaction {
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
+        self.version.serialize_le(dest);
+        if !self.flags.is_empty() {
+            dest.push(0);
+            dest.push(self.flags.bits());
+        }
+        self.inputs.len().serialize_le(dest);
+        for input in &self.inputs {
+            input.txid.serialize_le(dest);
+            input.vout.serialize_le(dest);
+            input.unlock_script.len().serialize_le(dest);
+            dest.extend(&input.unlock_script);
+            input.sequence.serialize_le(dest);
+        }
+        self.outputs.len().serialize_le(dest);
+        for output in &self.outputs {
+            output.value.serialize_le(dest);
+            output.lock_script.len().serialize_le(dest);
+            dest.extend(&output.lock_script);
+        }
+        if self.flags.contains(TransactionFlags::WITNESS) {
+            for input in &self.inputs {
+                input.witness_stuff.len().serialize_le(dest);
+                for witness in &input.witness_stuff {
+                    witness.len().serialize_le(dest);
+                    dest.extend(witness);
+                }
+            }
+        }
+        self.locktime.serialize_le(dest);
+    }
+
+    fn deserialize_le(bytes: &[u8], ix: &mut usize) -> Result<Self, BlockParseError> where Self: Sized {
+        let version = u32::deserialize_le(bytes, ix)?;
+        let count = usize::deserialize_le(bytes, ix)?;
+        let (flags, input_count) = if count == 0 /* && allow_witness*/ {
+            (read_txflags(bytes, ix)?, usize::deserialize_le(bytes, ix)?)
+        } else {
+            (TransactionFlags::empty(), count)
+        };
+        let mut inputs = Vec::with_capacity(input_count);
+        for _ in 0..input_count {
+            inputs.push(read_transaction_input(bytes, ix)?);
+        }
+        let output_count = usize::deserialize_le(bytes, ix)?;
+        let mut outputs = Vec::with_capacity(output_count);
+        for _ in 0..output_count {
+            outputs.push(read_transaction_output(bytes, ix)?);
+        }
+        if flags.contains(TransactionFlags::WITNESS) {
+            for input in inputs.iter_mut() {
+                let outer_count = usize::deserialize_le(bytes, ix)?;
+                let mut witness_stuff = Vec::with_capacity(outer_count);
+                for _ in 0..outer_count {
+                    witness_stuff.push(read_bytearray(bytes, ix)?);
+                }
+                input.witness_stuff = witness_stuff;
+            }
+        }
+        let locktime = u32::deserialize_le(bytes, ix)?;
+
+        Ok(Transaction {
+            version,
+            flags,
+            inputs,
+            outputs,
+            locktime,
+        })
+    }
+}
+
+impl LittleEndianSerialization for BlockHeader {
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
+        self.version.serialize_le(dest);
+        self.prev_block_hash.serialize_le(dest);
+        self.merkle_root.serialize_le(dest);
+        self.time.serialize_le(dest);
+        self.bits.serialize_le(dest);
+        self.nonce.serialize_le(dest);
+    }
+
+    fn deserialize_le(bytes: &[u8], ix: &mut usize) -> Result<Self, BlockParseError> where Self: Sized {
+        let version = u32::deserialize_le(bytes, ix)?;
+        let prev_block_hash = Hash::deserialize_le(bytes, ix)?;
+        let merkle_root = Hash::deserialize_le(bytes, ix)?;
+        let time = u32::deserialize_le(bytes, ix)?;
+        let bits = u32::deserialize_le(bytes, ix)?;
+        let nonce = u32::deserialize_le(bytes, ix)?;
+
+        Ok(BlockHeader {
+            version,
+            prev_block_hash,
+            merkle_root,
+            time,
+            bits,
+            nonce,
+        })
+    }
+}
 
 pub(crate) fn read_byte(bytes: &[u8], ix: &mut usize) -> Result<u8, BlockParseError> {
     if bytes.len() < *ix + 1 {
@@ -7,65 +234,6 @@ pub(crate) fn read_byte(bytes: &[u8], ix: &mut usize) -> Result<u8, BlockParseEr
     let result = bytes[*ix];
     *ix += 1;
     Ok(result)
-}
-
-pub(crate) fn read_2le(bytes: &[u8], ix: &mut usize) -> Result<u16, BlockParseError> {
-    if bytes.len() < *ix + 2 {
-        return Err(BlockParseError::new(format!("Unexpected end of input reading 2 bytes at index {}", *ix)));
-    }
-    let result = ((bytes[*ix + 1] as u16) << 8)
-        | (bytes[*ix] as u16);
-    *ix += 2;
-    Ok(result)
-}
-
-pub(crate) fn read_4le(bytes: &[u8], ix: &mut usize) -> Result<u32, BlockParseError> {
-    if bytes.len() < *ix + 4 {
-        return Err(BlockParseError::new(format!("Unexpected end of input reading 4 bytes at index {}", *ix)));
-    }
-    let result = ((bytes[*ix + 3] as u32) << 24)
-        | ((bytes[*ix + 2] as u32) << 16)
-        | ((bytes[*ix + 1] as u32) << 8)
-        | (bytes[*ix] as u32);
-    *ix += 4;
-    Ok(result)
-}
-
-pub(crate) fn read_8le(bytes: &[u8], ix: &mut usize) -> Result<u64, BlockParseError> {
-    if bytes.len() < *ix + 8 {
-        return Err(BlockParseError::new(format!("Unexpected end of input reading 8 bytes at index {}", *ix)));
-    }
-    let result = ((bytes[*ix + 7] as u64) << 56)
-        | ((bytes[*ix + 6] as u64) << 48)
-        | ((bytes[*ix + 5] as u64) << 40)
-        | ((bytes[*ix + 4] as u64) << 32)
-        | ((bytes[*ix + 3] as u64) << 24)
-        | ((bytes[*ix + 2] as u64) << 16)
-        | ((bytes[*ix + 1] as u64) << 8)
-        | (bytes[*ix] as u64);
-    *ix += 8;
-    Ok(result)
-}
-
-pub(crate) fn read_hash_le(bytes: &[u8], ix: &mut usize) -> Result<Hash, BlockParseError> {
-    if bytes.len() < *ix + 32 {
-        return Err(BlockParseError::new(format!("Unexpected end of input reading 32 bytes at index {}", *ix)));
-    }
-    let mut hash = [0; 32];
-    for i in 0..32 {
-        hash[i] = bytes[*ix + 31 - i];
-    }
-    *ix += 32;
-    Ok(Hash(hash))
-}
-
-fn read_compact_size(bytes: &[u8], ix: &mut usize) -> Result<u64, BlockParseError> {
-    match read_byte(bytes, ix)? {
-        val @ 0..=0xfc => Ok(val as u64),
-        0xfd => read_2le(bytes, ix).map(|x| x as u64),
-        0xfe => read_4le(bytes, ix).map(|x| x as u64),
-        0xff => read_8le(bytes, ix),
-    }
 }
 
 fn read_txflags(bytes: &[u8], ix: &mut usize) -> Result<TransactionFlags, BlockParseError> {
@@ -122,15 +290,15 @@ pub(crate) fn read_bytes(bytes: &[u8], ix: &mut usize, count: usize) -> Result<V
 }
 
 pub(crate) fn read_bytearray(bytes: &[u8], ix: &mut usize) -> Result<Vec<u8>, BlockParseError> {
-    let count = read_compact_size(bytes, ix)?.usize()?;
+    let count = usize::deserialize_le(bytes, ix)?;
     read_bytes(bytes, ix, count)
 }
 
 fn read_transaction_input(raw_data: &[u8], ix: &mut usize) -> Result<TransactionInput, BlockParseError> {
-    let txid = read_hash_le(raw_data, ix)?;
-    let vout = read_4le(raw_data, ix)?;
+    let txid = Hash::deserialize_le(raw_data, ix)?;
+    let vout = u32::deserialize_le(raw_data, ix)?;
     let unlock_script = read_bytearray(raw_data, ix)?;
-    let sequence = read_4le(raw_data, ix)?;
+    let sequence = u32::deserialize_le(raw_data, ix)?;
 
     Ok(TransactionInput {
         txid,
@@ -142,7 +310,7 @@ fn read_transaction_input(raw_data: &[u8], ix: &mut usize) -> Result<Transaction
 }
 
 fn read_transaction_output(raw_data: &[u8], ix: &mut usize) -> Result<TransactionOutput, BlockParseError> {
-    let value = read_8le(raw_data, ix)?;
+    let value = u64::deserialize_le(raw_data, ix)?;
     let lock_script = read_bytearray(raw_data, ix)?;
 
     Ok(TransactionOutput {
@@ -161,16 +329,15 @@ pub fn parse_blockfile(raw_data: &[u8]) -> Result<Vec<Block>, BlockParseError> {
 }
 
 pub fn parse_block(raw_data: &[u8], ix: &mut usize) -> Result<Block, BlockParseError> {
-    let magic = read_4le(raw_data, ix)?;
-    let network = Network::from(magic).ok_or_else(|| BlockParseError::new(format!("Unrecognized network magic value {:#x} at index {}", magic, *ix - 4)))?;
-    let size = read_4le(raw_data, ix)?.usize()?;
+    let network = Network::deserialize_le(raw_data, ix)?;
+    let size = u32::deserialize_le(raw_data, ix)?.usize()?;
     let end = *ix + size;
 
-    let header = parse_block_header(raw_data, ix)?;
-    let transaction_count = read_compact_size(raw_data, ix)?.usize()?;
+    let header = BlockHeader::deserialize_le(raw_data, ix)?;
+    let transaction_count = usize::deserialize_le(raw_data, ix)?;
     let mut transactions = Vec::with_capacity(transaction_count);
     for _ in 0..transaction_count {
-        transactions.push(parse_transaction(raw_data, ix)?);
+        transactions.push(Transaction::deserialize_le(raw_data, ix)?);
     }
 
     if *ix != end {
@@ -181,62 +348,6 @@ pub fn parse_block(raw_data: &[u8], ix: &mut usize) -> Result<Block, BlockParseE
         network,
         header,
         transactions,
-    })
-}
-
-pub fn parse_block_header(raw_data: &[u8], ix: &mut usize) -> Result<BlockHeader, BlockParseError> {
-    let version = read_4le(raw_data, ix)?;
-    let prev_block_hash = read_hash_le(raw_data, ix)?;
-    let merkle_root = read_hash_le(raw_data, ix)?;
-    let time = read_4le(raw_data, ix)?;
-    let bits = read_4le(raw_data, ix)?;
-    let nonce = read_4le(raw_data, ix)?;
-
-    Ok(BlockHeader {
-        version,
-        prev_block_hash,
-        merkle_root,
-        time,
-        bits,
-        nonce,
-    })
-}
-
-pub fn parse_transaction(raw_data: &[u8], ix: &mut usize) -> Result<Transaction, BlockParseError> {
-    let version = read_4le(raw_data, ix)?;
-    let count = read_compact_size(raw_data, ix)?.usize()?;
-    let (flags, input_count) = if count == 0 /* && allow_witness*/ {
-        (read_txflags(raw_data, ix)?, read_compact_size(raw_data, ix)?.usize()?)
-    } else {
-        (TransactionFlags::empty(), count)
-    };
-    let mut inputs = Vec::with_capacity(input_count);
-    for _ in 0..input_count {
-        inputs.push(read_transaction_input(raw_data, ix)?);
-    }
-    let output_count = read_compact_size(raw_data, ix)?.usize()?;
-    let mut outputs = Vec::with_capacity(output_count);
-    for _ in 0..output_count {
-        outputs.push(read_transaction_output(raw_data, ix)?);
-    }
-    if flags.contains(TransactionFlags::WITNESS) {
-        for input in inputs.iter_mut() {
-            let outer_count = read_compact_size(raw_data, ix)?.usize()?;
-            let mut witness_stuff = Vec::with_capacity(outer_count);
-            for _ in 0..outer_count {
-                witness_stuff.push(read_bytearray(raw_data, ix)?);
-            }
-            input.witness_stuff = witness_stuff;
-        }
-    }
-    let locktime = read_4le(raw_data, ix)?;
-
-    Ok(Transaction {
-        version,
-        flags,
-        inputs,
-        outputs,
-        locktime,
     })
 }
 

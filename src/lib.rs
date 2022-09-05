@@ -15,8 +15,9 @@ pub use error::BlockParseError;
 
 use std::fmt;
 
-pub(crate) trait SerializeLittleEndian {
+pub trait LittleEndianSerialization {
     fn serialize_le(&self, dest: &mut Vec<u8>);
+    fn deserialize_le(bytes: &[u8], ix: &mut usize) -> Result<Self, BlockParseError> where Self: Sized;
 }
 
 #[derive(Debug)]
@@ -37,62 +38,6 @@ impl Network {
     }
 }
 
-impl SerializeLittleEndian for Network {
-    fn serialize_le(&self, dest: &mut Vec<u8>) {
-        match self {
-            Network::MainNet => dest.extend(vec![0xf9, 0xbe, 0xb4, 0xd9]),
-            Network::TestNet3 => dest.extend(vec![0x0b, 0x11, 0x09, 0x07]),
-            Network::RegTest => dest.extend(vec![0xfa, 0xbf, 0xb5, 0xda]),
-        }
-    }
-}
-
-impl SerializeLittleEndian for u16 {
-    fn serialize_le(&self, dest: &mut Vec<u8>) {
-        dest.push((self & 0xff) as u8);
-        dest.push(((self >> 8) & 0xff) as u8);
-    }
-}
-
-impl SerializeLittleEndian for u32 {
-    fn serialize_le(&self, dest: &mut Vec<u8>) {
-        dest.push((self & 0xff) as u8);
-        dest.push(((self >> 8) & 0xff) as u8);
-        dest.push(((self >> 16) & 0xff) as u8);
-        dest.push(((self >> 24) & 0xff) as u8);
-    }
-}
-
-impl SerializeLittleEndian for u64 {
-    fn serialize_le(&self, dest: &mut Vec<u8>) {
-        dest.push((self & 0xff) as u8);
-        dest.push(((self >> 8) & 0xff) as u8);
-        dest.push(((self >> 16) & 0xff) as u8);
-        dest.push(((self >> 24) & 0xff) as u8);
-        dest.push(((self >> 32) & 0xff) as u8);
-        dest.push(((self >> 40) & 0xff) as u8);
-        dest.push(((self >> 48) & 0xff) as u8);
-        dest.push(((self >> 56) & 0xff) as u8);
-    }
-}
-
-impl SerializeLittleEndian for usize {
-    fn serialize_le(&self, dest: &mut Vec<u8>) {
-        if *self <= 0xfc {
-            dest.push(*self as u8);
-        } else if *self <= 0xffff {
-            dest.push(0xfd);
-            (*self as u16).serialize_le(dest);
-        } else if *self <= 0xffffffff {
-            dest.push(0xfe);
-            (*self as u32).serialize_le(dest);
-        } else {
-            dest.push(0xff);
-            (*self as u64).serialize_le(dest);
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
 pub struct Hash([u8; 32]);
 
@@ -105,12 +50,6 @@ impl Hash {
         let mut hash_bytes = self.0;
         hash_bytes.reverse();
         Hash(hash_bytes)
-    }
-}
-
-impl SerializeLittleEndian for Hash {
-    fn serialize_le(&self, dest: &mut Vec<u8>) {
-        dest.extend(self.0.iter().rev());
     }
 }
 
@@ -255,40 +194,6 @@ pub struct Transaction {
     pub locktime: u32,
 }
 
-impl SerializeLittleEndian for Transaction {
-    fn serialize_le(&self, dest: &mut Vec<u8>) {
-        self.version.serialize_le(dest);
-        if !self.flags.is_empty() {
-            dest.push(0);
-            dest.push(self.flags.bits());
-        }
-        self.inputs.len().serialize_le(dest);
-        for input in &self.inputs {
-            input.txid.serialize_le(dest);
-            input.vout.serialize_le(dest);
-            input.unlock_script.len().serialize_le(dest);
-            dest.extend(&input.unlock_script);
-            input.sequence.serialize_le(dest);
-        }
-        self.outputs.len().serialize_le(dest);
-        for output in &self.outputs {
-            output.value.serialize_le(dest);
-            output.lock_script.len().serialize_le(dest);
-            dest.extend(&output.lock_script);
-        }
-        if self.flags.contains(TransactionFlags::WITNESS) {
-            for input in &self.inputs {
-                input.witness_stuff.len().serialize_le(dest);
-                for witness in &input.witness_stuff {
-                    witness.len().serialize_le(dest);
-                    dest.extend(witness);
-                }
-            }
-        }
-        self.locktime.serialize_le(dest);
-    }
-}
-
 #[derive(Debug)]
 pub struct BlockHeader {
     pub version: u32,
@@ -297,17 +202,6 @@ pub struct BlockHeader {
     pub time: u32,
     pub bits: u32,
     pub nonce: u32,
-}
-
-impl SerializeLittleEndian for BlockHeader {
-    fn serialize_le(&self, dest: &mut Vec<u8>) {
-        self.version.serialize_le(dest);
-        self.prev_block_hash.serialize_le(dest);
-        self.merkle_root.serialize_le(dest);
-        self.time.serialize_le(dest);
-        self.bits.serialize_le(dest);
-        self.nonce.serialize_le(dest);
-    }
 }
 
 #[derive(Debug)]

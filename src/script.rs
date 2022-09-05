@@ -1,5 +1,5 @@
-use crate::{BlockParseError, Opcode, Script};
-use crate::parse::{read_byte, read_bytes, read_2le, read_4le, IntoUsize};
+use crate::{BlockParseError, LittleEndianSerialization, Opcode, Script};
+use crate::parse::{read_byte, read_bytes, IntoUsize};
 
 fn read_opcode(bytes: &[u8], ix: &mut usize) -> Result<Opcode, BlockParseError> {
     match read_byte(bytes, ix)? {
@@ -9,11 +9,11 @@ fn read_opcode(bytes: &[u8], ix: &mut usize) -> Result<Opcode, BlockParseError> 
             Ok(Opcode::PushArray(read_bytes(bytes, ix, count)?))
         }
         0x4d => {
-            let count = read_2le(bytes, ix)?.usize()?;
+            let count = u16::deserialize_le(bytes, ix)?.usize()?;
             Ok(Opcode::PushArray(read_bytes(bytes, ix, count)?))
         }
         0x4e => {
-            let count = read_4le(bytes, ix)?.usize()?;
+            let count = u32::deserialize_le(bytes, ix)?.usize()?;
             Ok(Opcode::PushArray(read_bytes(bytes, ix, count)?))
         }
         v @ 0x4f => Ok(Opcode::PushNumber(v as i8 - 0x50)),
