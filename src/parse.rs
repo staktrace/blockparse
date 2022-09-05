@@ -19,6 +19,21 @@ impl LittleEndianSerialization for Network {
     }
 }
 
+impl LittleEndianSerialization for u8 {
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
+        dest.push(*self);
+    }
+
+    fn deserialize_le(bytes: &[u8], ix: &mut usize) -> Result<Self, BlockParseError> where Self: Sized {
+        if bytes.len() < *ix + 1 {
+            return Err(BlockParseError::new(format!("Unexpected end of input reading 1 byte at index {}", *ix)));
+        }
+        let result = bytes[*ix];
+        *ix += 1;
+        Ok(result)
+    }
+}
+
 impl LittleEndianSerialization for u16 {
     fn serialize_le(&self, dest: &mut Vec<u8>) {
         dest.push((self & 0xff) as u8);
@@ -103,7 +118,7 @@ impl LittleEndianSerialization for usize {
     }
 
     fn deserialize_le(bytes: &[u8], ix: &mut usize) -> Result<Self, BlockParseError> where Self: Sized {
-        match read_byte(bytes, ix)? {
+        match u8::deserialize_le(bytes, ix)? {
             val @ 0..=0xfc => Ok(val as u64),
             0xfd => u16::deserialize_le(bytes, ix).map(|x| x as u64),
             0xfe => u32::deserialize_le(bytes, ix).map(|x| x as u64),
@@ -136,7 +151,7 @@ impl LittleEndianSerialization for TransactionFlags {
     }
 
     fn deserialize_le(bytes: &[u8], ix: &mut usize) -> Result<Self, BlockParseError> where Self: Sized {
-        let b = read_byte(bytes, ix)?;
+        let b = u8::deserialize_le(bytes, ix)?;
         TransactionFlags::from_bits(b).ok_or_else(|| BlockParseError::new(format!("Unrecognized transaction flags at index {}", *ix - 1)))
     }
 }
@@ -259,13 +274,66 @@ impl LittleEndianSerialization for BlockHeader {
     }
 }
 
-pub(crate) fn read_byte(bytes: &[u8], ix: &mut usize) -> Result<u8, BlockParseError> {
-    if bytes.len() < *ix + 1 {
-        return Err(BlockParseError::new(format!("Unexpected end of input reading 1 byte at index {}", *ix)));
+impl LittleEndianSerialization for Block {
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
+        self.network.serialize_le(dest);
+        let mut size_ix = dest.len();
+        0u32.serialize_le(dest);
+        self.header.serialize_le(dest);
+        self.transactions.len().serialize_le(dest);
+        for transaction in &self.transactions {
+            transaction.serialize_le(dest);
+        }
+        let end_ix = dest.len();
+        let size = (end_ix - (size_ix + 4)) as u32;
+
+        let mut serialized_size = Vec::with_capacity(4);
+        size.serialize_le(&mut serialized_size);
+        for b in serialized_size {
+            dest[size_ix] = b;
+            size_ix += 1;
+        }
     }
-    let result = bytes[*ix];
-    *ix += 1;
+
+    fn deserialize_le(bytes: &[u8], ix: &mut usize) -> Result<Self, BlockParseError> where Self: Sized {
+        let network = Network::deserialize_le(bytes, ix)?;
+        let size = u32::deserialize_le(bytes, ix)?.usize()?;
+        let end = *ix + size;
+
+        let header = BlockHeader::deserialize_le(bytes, ix)?;
+        let transaction_count = usize::deserialize_le(bytes, ix)?;
+        let mut transactions = Vec::with_capacity(transaction_count);
+        for _ in 0..transaction_count {
+            transactions.push(Transaction::deserialize_le(bytes, ix)?);
+        }
+
+        if *ix != end {
+            return Err(BlockParseError::new(format!("Unexpected read index after block; expected {} but got {}", end, *ix)));
+        }
+
+        Ok(Block {
+            network,
+            header,
+            transactions,
+        })
+    }
+}
+
+pub(crate) fn read_bytes(bytes: &[u8], ix: &mut usize, count: usize) -> Result<Vec<u8>, BlockParseError> {
+    let end = *ix + count;
+    if bytes.len() < end {
+        return Err(BlockParseError::new(format!("Unexpected end of input reading {} bytes at index {}", count, *ix)));
+    }
+
+    let mut result = Vec::with_capacity(count);
+    result.extend_from_slice(&bytes[*ix..end]);
+    *ix = end;
     Ok(result)
+}
+
+pub(crate) fn read_bytearray(bytes: &[u8], ix: &mut usize) -> Result<Vec<u8>, BlockParseError> {
+    let count = usize::deserialize_le(bytes, ix)?;
+    read_bytes(bytes, ix, count)
 }
 
 pub(crate) trait IntoUsize {
@@ -304,53 +372,13 @@ impl IntoUsize for u8 {
     }
 }
 
-pub(crate) fn read_bytes(bytes: &[u8], ix: &mut usize, count: usize) -> Result<Vec<u8>, BlockParseError> {
-    let end = *ix + count;
-    if bytes.len() < end {
-        return Err(BlockParseError::new(format!("Unexpected end of input reading {} bytes at index {}", count, *ix)));
-    }
-
-    let mut result = Vec::with_capacity(count);
-    result.extend_from_slice(&bytes[*ix..end]);
-    *ix = end;
-    Ok(result)
-}
-
-pub(crate) fn read_bytearray(bytes: &[u8], ix: &mut usize) -> Result<Vec<u8>, BlockParseError> {
-    let count = usize::deserialize_le(bytes, ix)?;
-    read_bytes(bytes, ix, count)
-}
-
 pub fn parse_blockfile(raw_data: &[u8]) -> Result<Vec<Block>, BlockParseError> {
     let mut ix = 0;
     let mut blocks = Vec::new();
     while ix < raw_data.len() {
-        blocks.push(parse_block(raw_data, &mut ix)?);
+        blocks.push(Block::deserialize_le(raw_data, &mut ix)?);
     }
     Ok(blocks)
-}
-
-pub fn parse_block(raw_data: &[u8], ix: &mut usize) -> Result<Block, BlockParseError> {
-    let network = Network::deserialize_le(raw_data, ix)?;
-    let size = u32::deserialize_le(raw_data, ix)?.usize()?;
-    let end = *ix + size;
-
-    let header = BlockHeader::deserialize_le(raw_data, ix)?;
-    let transaction_count = usize::deserialize_le(raw_data, ix)?;
-    let mut transactions = Vec::with_capacity(transaction_count);
-    for _ in 0..transaction_count {
-        transactions.push(Transaction::deserialize_le(raw_data, ix)?);
-    }
-
-    if *ix != end {
-        return Err(BlockParseError::new(format!("Unexpected read index after block; expected {} but got {}", end, *ix)));
-    }
-
-    Ok(Block {
-        network,
-        header,
-        transactions,
-    })
 }
 
 #[cfg(test)]
@@ -368,25 +396,37 @@ mod tests {
 
     #[test]
     fn test_block_0() {
-        let block_0 = parse_blockfile(&read_testdata("block_0.dat")).unwrap().pop().unwrap();
+        let data = read_testdata("block_0.dat");
+        let block_0 = parse_blockfile(&data).unwrap().pop().unwrap();
         assert_eq!(block_0.header.merkle_root.to_string(), "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b");
         assert_eq!(block_0.header.merkle_root, block_0.computed_merkle_root());
         assert_eq!(block_0.transactions.len(), 1);
+        let mut serialized = Vec::new();
+        block_0.serialize_le(&mut serialized);
+        assert_eq!(data, serialized);
     }
 
     #[test]
     fn test_block_481829() {
-        let block_481829 = parse_blockfile(&read_testdata("block_481829.dat")).unwrap().pop().unwrap();
+        let data = read_testdata("block_481829.dat");
+        let block_481829 = parse_blockfile(&data).unwrap().pop().unwrap();
         assert_eq!(block_481829.header.merkle_root.to_string(), "f06f697be2cac7af7ed8cd0b0b81eaa1a39e444c6ebd3697e35ab34461b6c58d");
         assert_eq!(block_481829.header.merkle_root, block_481829.computed_merkle_root());
         assert_eq!(block_481829.transactions.len(), 2020);
+        let mut serialized = Vec::new();
+        block_481829.serialize_le(&mut serialized);
+        assert_eq!(data, serialized);
     }
 
     #[test]
     fn test_block_265458() {
-        let block_265458 = parse_blockfile(&read_testdata("block_265458.dat")).unwrap().pop().unwrap();
+        let data = read_testdata("block_265458.dat");
+        let block_265458 = parse_blockfile(&data).unwrap().pop().unwrap();
         assert_eq!(block_265458.header.merkle_root.to_string(), "501174c68520c1d23bea38774b2dac1d26d4a6c34daef6638762731e78ab1c06");
         assert_eq!(block_265458.header.merkle_root, block_265458.computed_merkle_root());
         assert_eq!(block_265458.transactions.len(), 320);
+        let mut serialized = Vec::new();
+        block_265458.serialize_le(&mut serialized);
+        assert_eq!(data, serialized);
     }
 }
