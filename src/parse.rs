@@ -130,12 +130,23 @@ impl LittleEndianSerialization for Hash {
     }
 }
 
+impl LittleEndianSerialization for TransactionFlags {
+    fn serialize_le(&self, dest: &mut Vec<u8>) {
+        dest.push(self.bits());
+    }
+
+    fn deserialize_le(bytes: &[u8], ix: &mut usize) -> Result<Self, BlockParseError> where Self: Sized {
+        let b = read_byte(bytes, ix)?;
+        TransactionFlags::from_bits(b).ok_or_else(|| BlockParseError::new(format!("Unrecognized transaction flags at index {}", *ix - 1)))
+    }
+}
+
 impl LittleEndianSerialization for Transaction {
     fn serialize_le(&self, dest: &mut Vec<u8>) {
         self.version.serialize_le(dest);
         if !self.flags.is_empty() {
             dest.push(0);
-            dest.push(self.flags.bits());
+            self.flags.serialize_le(dest);
         }
         self.inputs.len().serialize_le(dest);
         for input in &self.inputs {
@@ -167,7 +178,7 @@ impl LittleEndianSerialization for Transaction {
         let version = u32::deserialize_le(bytes, ix)?;
         let count = usize::deserialize_le(bytes, ix)?;
         let (flags, input_count) = if count == 0 /* && allow_witness*/ {
-            (read_txflags(bytes, ix)?, usize::deserialize_le(bytes, ix)?)
+            (TransactionFlags::deserialize_le(bytes, ix)?, usize::deserialize_le(bytes, ix)?)
         } else {
             (TransactionFlags::empty(), count)
         };
@@ -238,11 +249,6 @@ pub(crate) fn read_byte(bytes: &[u8], ix: &mut usize) -> Result<u8, BlockParseEr
     let result = bytes[*ix];
     *ix += 1;
     Ok(result)
-}
-
-fn read_txflags(bytes: &[u8], ix: &mut usize) -> Result<TransactionFlags, BlockParseError> {
-    let b = read_byte(bytes, ix)?;
-    TransactionFlags::from_bits(b).ok_or_else(|| BlockParseError::new(format!("Unrecognized transaction flags at index {}", *ix - 1)))
 }
 
 pub(crate) trait IntoUsize {
