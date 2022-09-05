@@ -223,18 +223,18 @@ impl Block {
         for transaction in &self.transactions {
             layer_hashes.push(hash::double_sha256(transaction).reverse());
         }
-        while layer_size > layer_hashes.len() {
-            layer_hashes.push(*layer_hashes.last().unwrap());
-        }
 
         while layer_size > 1 {
+            if layer_size > layer_hashes.len() {
+                layer_hashes.push(*layer_hashes.last().unwrap());
+            }
+            assert!(layer_hashes.len() == layer_size);
+            assert!((layer_size % 2) == 0);
+
             let next_layer_size = adjust_count(layer_size / 2);
             let mut next_hashes = Vec::with_capacity(next_layer_size);
-            for i in 0..next_layer_size {
-                let mut next_hash = hmac_sha256::Hash::new();
-                next_hash.update(layer_hashes[i * 2].0);
-                next_hash.update(layer_hashes[i * 2 + 1].0);
-                let first_hash = next_hash.finalize();
+            for i in (0..layer_size).step_by(2) {
+                let first_hash = hmac_sha256::Hash::hash(&[layer_hashes[i].0, layer_hashes[i + 1].0].concat());
                 let second_hash = hmac_sha256::Hash::hash(&first_hash);
                 next_hashes.push(Hash(second_hash));
             }
