@@ -1,5 +1,5 @@
 [package]
-name = "blockparse"
+name = "blocktastic"
 version = "0.1.0"
 authors = ["Kartikaya Gupta"]
 edition = "2021"
