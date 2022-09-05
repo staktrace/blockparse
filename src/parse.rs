@@ -372,11 +372,11 @@ impl IntoUsize for u8 {
     }
 }
 
-pub fn parse_blockfile(raw_data: &[u8]) -> Result<Vec<Block>, BlockParseError> {
+pub fn parse_blockfile(bytes: &[u8]) -> Result<Vec<Block>, BlockParseError> {
     let mut ix = 0;
     let mut blocks = Vec::new();
-    while ix < raw_data.len() {
-        blocks.push(Block::deserialize_le(raw_data, &mut ix)?);
+    while ix < bytes.len() {
+        blocks.push(Block::deserialize_le(bytes, &mut ix)?);
     }
     Ok(blocks)
 }
