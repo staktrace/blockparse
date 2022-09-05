@@ -10,8 +10,12 @@ impl LittleEndianSerialization for Network {
     }
 
     fn deserialize_le(bytes: &[u8], ix: &mut usize) -> Result<Self, BlockParseError> where Self: Sized {
-        let magic = u32::deserialize_le(bytes, ix)?;
-        Network::from(magic).ok_or_else(|| BlockParseError::new(format!("Unrecognized network magic value {:#x} at index {}", magic, *ix - 4)))
+        match u32::deserialize_le(bytes, ix)? {
+            0xd9b4bef9 => Ok(Network::MainNet),
+            0x0709110b => Ok(Network::TestNet3),
+            0xdab5bffa => Ok(Network::RegTest),
+            magic => Err(BlockParseError::new(format!("Unrecognized network magic value {:#x} at index {}", magic, *ix - 4))),
+        }
     }
 }
 

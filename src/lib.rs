@@ -27,17 +27,6 @@ pub enum Network {
     RegTest,
 }
 
-impl Network {
-    fn from(magic: u32) -> Option<Self> {
-        match magic {
-            0xd9b4bef9 => Some(Network::MainNet),
-            0x0709110b => Some(Network::TestNet3),
-            0xdab5bffa => Some(Network::RegTest),
-            _ => None,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
 pub struct Hash([u8; 32]);
 
