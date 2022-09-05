@@ -184,12 +184,29 @@ impl LittleEndianSerialization for Transaction {
         };
         let mut inputs = Vec::with_capacity(input_count);
         for _ in 0..input_count {
-            inputs.push(read_transaction_input(bytes, ix)?);
+            let txid = Hash::deserialize_le(bytes, ix)?;
+            let vout = u32::deserialize_le(bytes, ix)?;
+            let unlock_script = read_bytearray(bytes, ix)?;
+            let sequence = u32::deserialize_le(bytes, ix)?;
+
+            inputs.push(TransactionInput {
+                txid,
+                vout,
+                unlock_script,
+                sequence,
+                witness_stuff: vec![],
+            })
         }
         let output_count = usize::deserialize_le(bytes, ix)?;
         let mut outputs = Vec::with_capacity(output_count);
         for _ in 0..output_count {
-            outputs.push(read_transaction_output(bytes, ix)?);
+            let value = u64::deserialize_le(bytes, ix)?;
+            let lock_script = read_bytearray(bytes, ix)?;
+
+            outputs.push(TransactionOutput {
+                value,
+                lock_script,
+            })
         }
         if flags.contains(TransactionFlags::WITNESS) {
             for input in inputs.iter_mut() {
@@ -302,31 +319,6 @@ pub(crate) fn read_bytes(bytes: &[u8], ix: &mut usize, count: usize) -> Result<V
 pub(crate) fn read_bytearray(bytes: &[u8], ix: &mut usize) -> Result<Vec<u8>, BlockParseError> {
     let count = usize::deserialize_le(bytes, ix)?;
     read_bytes(bytes, ix, count)
-}
-
-fn read_transaction_input(raw_data: &[u8], ix: &mut usize) -> Result<TransactionInput, BlockParseError> {
-    let txid = Hash::deserialize_le(raw_data, ix)?;
-    let vout = u32::deserialize_le(raw_data, ix)?;
-    let unlock_script = read_bytearray(raw_data, ix)?;
-    let sequence = u32::deserialize_le(raw_data, ix)?;
-
-    Ok(TransactionInput {
-        txid,
-        vout,
-        unlock_script,
-        sequence,
-        witness_stuff: vec![],
-    })
-}
-
-fn read_transaction_output(raw_data: &[u8], ix: &mut usize) -> Result<TransactionOutput, BlockParseError> {
-    let value = u64::deserialize_le(raw_data, ix)?;
-    let lock_script = read_bytearray(raw_data, ix)?;
-
-    Ok(TransactionOutput {
-        value,
-        lock_script,
-    })
 }
 
 pub fn parse_blockfile(raw_data: &[u8]) -> Result<Vec<Block>, BlockParseError> {
