@@ -159,7 +159,7 @@ pub struct Script {
     pub opcodes: Vec<Opcode>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TransactionInput {
     pub txid: Hash,
     pub vout: u32,
@@ -168,7 +168,7 @@ pub struct TransactionInput {
     pub witness_stuff: Vec<Vec<u8>>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TransactionOutput {
     pub value: u64,
     pub lock_script: Vec<u8>,
@@ -181,6 +181,18 @@ pub struct Transaction {
     pub inputs: Vec<TransactionInput>,
     pub outputs: Vec<TransactionOutput>,
     pub locktime: u32,
+}
+
+impl Transaction {
+    fn strip_witness_data(&self) -> Transaction {
+        Transaction {
+            version: self.version,
+            flags: TransactionFlags::empty(),
+            inputs: self.inputs.clone(),
+            outputs: self.outputs.clone(),
+            locktime: self.locktime,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -221,7 +233,7 @@ impl Block {
         let mut layer_size = adjust_count(self.transactions.len());
         let mut layer_hashes = Vec::with_capacity(layer_size);
         for transaction in &self.transactions {
-            layer_hashes.push(hash::double_sha256(transaction).reverse());
+            layer_hashes.push(hash::double_sha256(&transaction.strip_witness_data()).reverse());
         }
 
         while layer_size > 1 {

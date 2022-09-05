@@ -144,10 +144,10 @@ impl LittleEndianSerialization for TransactionFlags {
 impl LittleEndianSerialization for Transaction {
     fn serialize_le(&self, dest: &mut Vec<u8>) {
         self.version.serialize_le(dest);
-        //if !self.flags.is_empty() {
-        //    dest.push(0);
-        //    self.flags.serialize_le(dest);
-        //}
+        if !self.flags.is_empty() {
+            dest.push(0);
+            self.flags.serialize_le(dest);
+        }
         self.inputs.len().serialize_le(dest);
         for input in &self.inputs {
             input.txid.serialize_le(dest);
@@ -162,15 +162,15 @@ impl LittleEndianSerialization for Transaction {
             output.lock_script.len().serialize_le(dest);
             dest.extend(&output.lock_script);
         }
-        //if self.flags.contains(TransactionFlags::WITNESS) {
-        //    for input in &self.inputs {
-        //        input.witness_stuff.len().serialize_le(dest);
-        //        for witness in &input.witness_stuff {
-        //            witness.len().serialize_le(dest);
-        //            dest.extend(witness);
-        //        }
-        //    }
-        //}
+        if self.flags.contains(TransactionFlags::WITNESS) {
+            for input in &self.inputs {
+                input.witness_stuff.len().serialize_le(dest);
+                for witness in &input.witness_stuff {
+                    witness.len().serialize_le(dest);
+                    dest.extend(witness);
+                }
+            }
+        }
         self.locktime.serialize_le(dest);
     }
 
