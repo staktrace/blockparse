@@ -144,10 +144,10 @@ impl LittleEndianSerialization for TransactionFlags {
 impl LittleEndianSerialization for Transaction {
     fn serialize_le(&self, dest: &mut Vec<u8>) {
         self.version.serialize_le(dest);
-        if !self.flags.is_empty() {
-            dest.push(0);
-            self.flags.serialize_le(dest);
-        }
+        //if !self.flags.is_empty() {
+        //    dest.push(0);
+        //    self.flags.serialize_le(dest);
+        //}
         self.inputs.len().serialize_le(dest);
         for input in &self.inputs {
             input.txid.serialize_le(dest);
@@ -162,15 +162,15 @@ impl LittleEndianSerialization for Transaction {
             output.lock_script.len().serialize_le(dest);
             dest.extend(&output.lock_script);
         }
-        if self.flags.contains(TransactionFlags::WITNESS) {
-            for input in &self.inputs {
-                input.witness_stuff.len().serialize_le(dest);
-                for witness in &input.witness_stuff {
-                    witness.len().serialize_le(dest);
-                    dest.extend(witness);
-                }
-            }
-        }
+        //if self.flags.contains(TransactionFlags::WITNESS) {
+        //    for input in &self.inputs {
+        //        input.witness_stuff.len().serialize_le(dest);
+        //        for witness in &input.witness_stuff {
+        //            witness.len().serialize_le(dest);
+        //            dest.extend(witness);
+        //        }
+        //    }
+        //}
         self.locktime.serialize_le(dest);
     }
 
@@ -367,17 +367,26 @@ mod tests {
     }
 
     #[test]
-    fn test_parsing() {
+    fn test_block_0() {
         let block_0 = parse_blockfile(&read_testdata("block_0.dat")).unwrap().pop().unwrap();
-        assert_eq!(block_0.merkle_root.to_string(), "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b");
+        assert_eq!(block_0.header.merkle_root.to_string(), "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b");
+        assert_eq!(block_0.header.merkle_root, block_0.computed_merkle_root());
         assert_eq!(block_0.transactions.len(), 1);
+    }
 
+    #[test]
+    fn test_block_481829() {
         let block_481829 = parse_blockfile(&read_testdata("block_481829.dat")).unwrap().pop().unwrap();
-        assert_eq!(block_481829.merkle_root.to_string(), "f06f697be2cac7af7ed8cd0b0b81eaa1a39e444c6ebd3697e35ab34461b6c58d");
+        assert_eq!(block_481829.header.merkle_root.to_string(), "f06f697be2cac7af7ed8cd0b0b81eaa1a39e444c6ebd3697e35ab34461b6c58d");
+        assert_eq!(block_481829.header.merkle_root, block_481829.computed_merkle_root());
         assert_eq!(block_481829.transactions.len(), 2020);
+    }
 
+    #[test]
+    fn test_block_265458() {
         let block_265458 = parse_blockfile(&read_testdata("block_265458.dat")).unwrap().pop().unwrap();
-        assert_eq!(block_265458.merkle_root.to_string(), "501174c68520c1d23bea38774b2dac1d26d4a6c34daef6638762731e78ab1c06");
+        assert_eq!(block_265458.header.merkle_root.to_string(), "501174c68520c1d23bea38774b2dac1d26d4a6c34daef6638762731e78ab1c06");
+        assert_eq!(block_265458.header.merkle_root, block_265458.computed_merkle_root());
         assert_eq!(block_265458.transactions.len(), 320);
     }
 }

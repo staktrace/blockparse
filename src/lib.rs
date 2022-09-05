@@ -27,7 +27,7 @@ pub enum Network {
     RegTest,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Hash([u8; 32]);
 
 impl Hash {
