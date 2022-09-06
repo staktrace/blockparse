@@ -6,12 +6,14 @@
 extern crate bitflags;
 extern crate hmac_sha256;
 
+pub mod builder;
 pub mod error;
 pub mod hash;
 pub mod parse;
 pub mod script;
+pub mod validator;
 
-pub use error::BlockParseError;
+pub use error::{BlockParseError, BlockValidationError};
 
 use std::fmt;
 
@@ -20,14 +22,14 @@ pub trait LittleEndianSerialization {
     fn deserialize_le(bytes: &[u8], ix: &mut usize) -> Result<Self, BlockParseError> where Self: Sized;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum Network {
     MainNet,
     TestNet3,
     RegTest,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct Hash([u8; 32]);
 
 impl Hash {
