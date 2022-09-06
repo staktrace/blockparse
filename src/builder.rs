@@ -77,9 +77,18 @@ impl BlockChainBuilder {
                         continue;
                     }
 
+                    // Note we hash the raw bytes rather than using block.id() because the merkle
+                    // root hash isn't perfect (doesn't cover witness data and can be fooled by
+                    // duplicating transactions, see https://github.com/bitcoin/bitcoin/blob/0ebd4db32b39cb7c505148f090df4b7ac778c307/src/consensus/merkle.cpp#L8)
                     let bytes_hash = Hash(hmac_sha256::Hash::hash(&bytes[last_good_ix..ix]));
-                    if self.deduplicator.insert(bytes_hash) {
-                        self.validator_tx.send(ValidatorMessage::NewBlock(block)).unwrap();
+                    if !self.deduplicator.insert(bytes_hash) {
+                        // We've already seen this block
+                        continue;
+                    }
+                    if self.validator_tx.send(ValidatorMessage::NewBlock(block)).is_err() {
+                        // validator has shut down. handle it gracefully
+                        self.deduplicator.remove(&bytes_hash);
+                        return last_good_ix;
                     }
                 }
                 Err(_) => return last_good_ix,
