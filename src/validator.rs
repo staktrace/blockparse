@@ -13,7 +13,6 @@ pub enum ValidationResult {
 }
 
 impl BlockValidator {
-
     pub fn new() -> Self {
         Self::default()
     }

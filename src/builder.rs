@@ -4,6 +4,8 @@ use std::collections::HashSet;
 use std::sync::mpsc::{channel, Sender};
 use std::thread;
 
+const ARBITRARY_ORPHANAGE_SIZE: usize = 128;
+
 enum ValidatorMessage {
     NewBlock(Block),
     Shutdown,
@@ -37,11 +39,11 @@ impl BlockChainBuilder {
     fn spawn_orphanage() -> Sender<OrphanageMessage> {
         let (tx, rx) = channel();
         let _join_handle = thread::spawn(move|| {
-            let mut orphanage = Orphanage {};
+            let mut orphanage = Orphanage::new(ARBITRARY_ORPHANAGE_SIZE);
             loop {
                 match rx.recv().unwrap() {
                     OrphanageMessage::NewOrphan(b) => orphanage.take_orphan(b),
-                    OrphanageMessage::NewParent(h, validator_tx) => orphanage.validate_orphans(h, validator_tx),
+                    OrphanageMessage::NewParent(h, validator_tx) => orphanage.find_children(h, validator_tx),
                     OrphanageMessage::Shutdown => break,
                 };
             }
@@ -92,13 +94,44 @@ impl BlockChainBuilder {
     }
 }
 
+/// An orphanage stores blocks that are currently orphans in the hope that they
+/// are received out-of-order and can be attached to the chain later. It has a
+/// maximum size and evicts entries in FIFO order if they do not get parented.
 struct Orphanage {
+    size: usize,
+    orphans: Vec<Block>,
 }
 
 impl Orphanage {
-    fn take_orphan(&mut self, _block: Block) {
+    fn new(size: usize) -> Self {
+        Self {
+            size,
+            orphans: Vec::with_capacity(size),
+        }
     }
 
-    fn validate_orphans(&mut self, _parent_id: Hash, _validator_tx: Sender<ValidatorMessage>) {
+    /// Store a new orphan in the orphanage, potentially evicting other orphans
+    /// if the orphanage is at capacity.
+    fn take_orphan(&mut self, block: Block) {
+        while self.orphans.len() >= self.size {
+            self.orphans.remove(0);
+        }
+        self.orphans.push(block);
+    }
+
+    /// Ask the orphanage to find orphans that are children of the given parent,
+    /// and send those blocks for validation to the validator. The orphans that
+    /// are identified are removed from the orphanage.
+    fn find_children(&mut self, parent_id: Hash, validator_tx: Sender<ValidatorMessage>) {
+        // TODO: Replace this with self.orphans.drain_filter once that is stable
+        let mut i = 0;
+        while i < self.orphans.len() {
+            if self.orphans[i].header.prev_block_hash == parent_id {
+                let child = self.orphans.remove(i);
+                validator_tx.send(ValidatorMessage::NewBlock(child)).unwrap();
+            } else {
+                i += 1;
+            }
+        }
     }
 }
