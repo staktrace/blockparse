@@ -22,7 +22,7 @@ pub trait LittleEndianSerialization {
     fn deserialize_le(bytes: &[u8], ix: &mut usize) -> Result<Self, BlockParseError> where Self: Sized;
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Network {
     MainNet,
     TestNet3,
@@ -176,7 +176,7 @@ pub struct TransactionOutput {
     pub lock_script: Vec<u8>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Transaction {
     pub version: u32,
     pub flags: TransactionFlags,
@@ -197,7 +197,7 @@ impl Transaction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct BlockHeader {
     pub version: u32,
     pub prev_block_hash: Hash,
@@ -207,7 +207,7 @@ pub struct BlockHeader {
     pub nonce: u32,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Block {
     pub network: Network,
     pub header: BlockHeader,

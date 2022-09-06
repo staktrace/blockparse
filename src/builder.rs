@@ -127,8 +127,14 @@ impl Orphanage {
         let mut i = 0;
         while i < self.orphans.len() {
             if self.orphans[i].header.prev_block_hash == parent_id {
-                let child = self.orphans.remove(i);
-                validator_tx.send(ValidatorMessage::NewBlock(child)).unwrap();
+                // The validator shuts down before the orphanage, so make sure not to discard
+                // orphans that fail to get sent.
+                let child = self.orphans.get(i).unwrap();
+                if validator_tx.send(ValidatorMessage::NewBlock(child.clone())).is_ok() {
+                    self.orphans.remove(i);
+                } else {
+                    break;
+                }
             } else {
                 i += 1;
             }
