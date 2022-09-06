@@ -1,5 +1,5 @@
 use crate::{Block, Hash, LittleEndianSerialization, Network};
-use crate::validator::BlockValidator;
+use crate::validator::{BlockValidator, ValidationResult};
 use std::collections::HashSet;
 use std::sync::mpsc::{channel, Sender};
 use std::thread;
@@ -9,33 +9,57 @@ enum ValidatorMessage {
     Shutdown,
 }
 
+enum OrphanageMessage {
+    NewOrphan(Block),
+    NewParent(Hash, Sender<ValidatorMessage>),
+    Shutdown,
+}
+
 pub struct BlockChainBuilder {
     network: Network,
     deduplicator: HashSet<Hash>,
+    orphanage_tx: Sender<OrphanageMessage>,
     validator_tx: Sender<ValidatorMessage>,
 }
 
-impl Default for BlockChainBuilder {
-    fn default() -> Self {
+impl BlockChainBuilder {
+    pub fn new(network: Network) -> Self {
+        let orphanage_tx = Self::spawn_orphanage();
+        let validator_tx = Self::spawn_validator(orphanage_tx.clone());
         BlockChainBuilder {
-            network: Network::MainNet,
+            network,
             deduplicator: HashSet::new(),
-            validator_tx: Self::spawn_validator(),
+            orphanage_tx,
+            validator_tx,
         }
     }
-}
 
-impl BlockChainBuilder {
-    pub fn new() -> Self {
-        Self::default()
+    fn spawn_orphanage() -> Sender<OrphanageMessage> {
+        let (tx, rx) = channel();
+        let _join_handle = thread::spawn(move|| {
+            let mut orphanage = Orphanage {};
+            loop {
+                match rx.recv().unwrap() {
+                    OrphanageMessage::NewOrphan(b) => orphanage.take_orphan(b),
+                    OrphanageMessage::NewParent(h, validator_tx) => orphanage.validate_orphans(h, validator_tx),
+                    OrphanageMessage::Shutdown => break,
+                };
+            }
+        });
+        tx
     }
 
-    fn spawn_validator() -> Sender<ValidatorMessage> {
+    fn spawn_validator(orphanage_tx: Sender<OrphanageMessage>) -> Sender<ValidatorMessage> {
         let (tx, rx) = channel();
+        let validator_tx = tx.clone();
         let _join_handle = thread::spawn(move|| {
             let mut validator = BlockValidator::new();
             while let ValidatorMessage::NewBlock(block) = rx.recv().unwrap() {
-                validator.handle_block(block);
+                match validator.handle_block(block) {
+                    ValidationResult::Valid(id) => orphanage_tx.send(OrphanageMessage::NewParent(id, validator_tx.clone())).unwrap(),
+                    ValidationResult::Invalid(_) => (),
+                    ValidationResult::Orphan(b) => orphanage_tx.send(OrphanageMessage::NewOrphan(b)).unwrap(),
+                };
             };
         });
         tx
@@ -64,5 +88,17 @@ impl BlockChainBuilder {
 
     pub fn shutdown(&mut self) {
         self.validator_tx.send(ValidatorMessage::Shutdown).unwrap();
+        self.orphanage_tx.send(OrphanageMessage::Shutdown).unwrap();
+    }
+}
+
+struct Orphanage {
+}
+
+impl Orphanage {
+    fn take_orphan(&mut self, _block: Block) {
+    }
+
+    fn validate_orphans(&mut self, _parent_id: Hash, _validator_tx: Sender<ValidatorMessage>) {
     }
 }
