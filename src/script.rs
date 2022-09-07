@@ -105,6 +105,7 @@ fn read_opcode(bytes: &[u8], ix: &mut usize) -> Result<Opcode, BlockParseError> 
     }
 }
 
+#[allow(unused)]
 pub fn parse_script(bytes: &[u8]) -> Result<Script, BlockParseError> {
     let mut opcodes = Vec::new();
 

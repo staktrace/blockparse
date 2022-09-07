@@ -1,3 +1,6 @@
+/// An error encountered during block parsing. This indicates the
+/// block data is not structurally valid. Details are provided in
+/// a freeform string message.
 #[derive(Debug)]
 pub struct BlockParseError {
     msg: String,
@@ -20,6 +23,9 @@ impl std::fmt::Display for BlockParseError {
 impl std::error::Error for BlockParseError {
 }
 
+/// An error encountered during block validation. This indicates the
+/// block was not sufficiently valid to be added to the blockchain.
+/// Details are provided in a freeform string message.
 #[derive(Debug)]
 pub struct BlockValidationError {
     msg: String,

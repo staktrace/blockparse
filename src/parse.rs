@@ -1,3 +1,5 @@
+//! A module that exposes a block parsing API.
+
 use crate::{Block, BlockHeader, BlockParseError, Hash, LittleEndianSerialization, Network, Transaction, TransactionFlags, TransactionInput, TransactionOutput};
 
 impl LittleEndianSerialization for Network {
@@ -372,6 +374,12 @@ impl IntoUsize for u8 {
     }
 }
 
+/// Parse raw byte data into a list of blocks. The bytes provided should be one or more
+/// blocks in the standard protocol format (starting with the network magic header).
+/// If multiple blocks are present they are assumed to be concatenated in the byte array
+/// and are parsed as such.
+/// If the data is fully parsed into blocks, the list of blocks is returned. Otherwise,
+/// a error is returned indicating why parsing failed.
 pub fn parse_blockfile(bytes: &[u8]) -> Result<Vec<Block>, BlockParseError> {
     let mut ix = 0;
     let mut blocks = Vec::new();

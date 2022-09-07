@@ -1,27 +1,41 @@
-#![deny(warnings)]
-#![deny(clippy::all)]
+#![deny(warnings, missing_docs, clippy::all)]
 #![forbid(unsafe_code)]
+
+//! This crate provides a full validation node for the Bitcoin protocol.
 
 #[macro_use]
 extern crate bitflags;
 extern crate hmac_sha256;
 
 pub mod builder;
-pub mod error;
-pub mod hash;
+mod error;
+mod hash;
 pub mod parse;
-pub mod script;
+mod script;
 pub mod validator;
 
 pub use error::{BlockParseError, BlockValidationError};
 
 use std::fmt;
 
+/// Trait implemented by most of the data structures that are part of the
+/// network protocol (Block, BlockHeader, etc.). This allows convenient
+/// serialization and deserialization from a Rust-friendly data structure
+/// to/from the protocol byte format.
 pub trait LittleEndianSerialization {
+    /// Serializes the object in little-endian format to the given byte
+    /// vector. The bytes are appended to the end of the Vec.
     fn serialize_le(&self, dest: &mut Vec<u8>);
+
+    /// Constructs an object given serialized bytes in little-endian format.
+    /// This is the reverse operation of the serialize_le function, although
+    /// it takes a byte array and an index into the array, and mutates the
+    /// index so that it points to whatever is after the serialized object.
     fn deserialize_le(bytes: &[u8], ix: &mut usize) -> Result<Self, BlockParseError> where Self: Sized;
 }
 
+/// The network being operated on. This is part of the block header.
+#[allow(missing_docs)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Network {
     MainNet,
@@ -29,14 +43,18 @@ pub enum Network {
     RegTest,
 }
 
+/// Object representing a SHA256 hash. Contains the raw 32-byte array that
+/// is the hash.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct Hash([u8; 32]);
 
 impl Hash {
+    /// Returns a zero hash
     pub fn zero() -> Self {
         Hash([0; 32])
     }
 
+    /// Reverses the byte order of the hash
     pub fn reverse(&self) -> Self {
         let mut hash_bytes = self.0;
         hash_bytes.reverse();
@@ -54,11 +72,14 @@ impl fmt::Display for Hash {
 }
 
 bitflags! {
+    #[allow(missing_docs)]
     pub struct TransactionFlags : u8 {
+        /// Indicates whether or not this transaction has segregated witness data.
         const WITNESS = 0x1;
     }
 }
 
+#[allow(missing_docs)]
 #[derive(Debug)]
 pub enum Opcode {
     PushArray(Vec<u8>), // 0x00 - 0x4e
@@ -156,11 +177,13 @@ pub enum Opcode {
     Invalid(u8), // 0xba - 0xff
 }
 
+#[allow(missing_docs)]
 #[derive(Debug)]
 pub struct Script {
     pub opcodes: Vec<Opcode>,
 }
 
+#[allow(missing_docs)]
 #[derive(Clone, Debug)]
 pub struct TransactionInput {
     pub txid: Hash,
@@ -170,12 +193,14 @@ pub struct TransactionInput {
     pub witness_stuff: Vec<Vec<u8>>,
 }
 
+#[allow(missing_docs)]
 #[derive(Clone, Debug)]
 pub struct TransactionOutput {
     pub value: u64,
     pub lock_script: Vec<u8>,
 }
 
+#[allow(missing_docs)]
 #[derive(Clone, Debug)]
 pub struct Transaction {
     pub version: u32,
@@ -197,6 +222,7 @@ impl Transaction {
     }
 }
 
+#[allow(missing_docs)]
 #[derive(Clone, Debug)]
 pub struct BlockHeader {
     pub version: u32,
@@ -207,6 +233,7 @@ pub struct BlockHeader {
     pub nonce: u32,
 }
 
+#[allow(missing_docs)]
 #[derive(Clone, Debug)]
 pub struct Block {
     pub network: Network,
@@ -215,10 +242,14 @@ pub struct Block {
 }
 
 impl Block {
+    /// Computes the block hash, which is a double SHA-256 hash of the block header.
     pub fn id(&self) -> Hash {
         hash::double_sha256(&self.header)
     }
 
+    /// Computes the merkle root of the block by hashing the transactions in a merkle
+    /// tree format. Note that this computes the merkle root and doesn't just return
+    /// the merkle root from the header.
     pub fn computed_merkle_root(&self) -> Hash {
         if self.transactions.is_empty() {
             return Hash::zero();

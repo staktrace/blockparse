@@ -1,3 +1,5 @@
+//! A high-level module to build a validation pipeline.
+
 use crate::{Block, Hash, LittleEndianSerialization, Network};
 use crate::validator::{BlockValidator, ValidationResult};
 use std::collections::HashSet;
@@ -17,6 +19,10 @@ enum OrphanageMessage {
     Shutdown,
 }
 
+/// The main entry point for the validation pipeline. This struct, when
+/// instantiated, sets up the different components needed to go from raw
+/// byte arrays (generally obtained via network communication or from
+/// files on disk) to a validated blockchain.
 pub struct BlockChainBuilder {
     network: Network,
     deduplicator: HashSet<Hash>,
@@ -25,6 +31,7 @@ pub struct BlockChainBuilder {
 }
 
 impl BlockChainBuilder {
+    /// Create a validation pipeline for the given network.
     pub fn new(network: Network) -> Self {
         let orphanage_tx = Self::spawn_orphanage();
         let validator_tx = Self::spawn_validator(orphanage_tx.clone());
@@ -67,6 +74,19 @@ impl BlockChainBuilder {
         tx
     }
 
+    /// Feed some data into the validation pipeline. The bytes provided should be one or more
+    /// blocks in the standard protocol format (starting with the network magic header).
+    /// If multiple blocks are present they are assumed to be concatenated in the byte array
+    /// and are parsed as such.
+    ///
+    /// The returned `usize` is the index at which parsing stopped or was interrupted. If this
+    /// is not equal to `bytes.len()` this is likely due to `bytes` containing data that was not
+    /// syntactically-valid block data. It may also occur if this function is called after
+    /// shutdown.
+    ///
+    /// Note that blocks that are syntactically valid but are otherwise invalid (e.g. for a
+    /// different network, or attempt to spend unspendable outputs) will still be accepted
+    /// by this function, but will not end up in the final blockchain.
     pub fn ingest(&mut self, bytes: &[u8]) -> usize {
         let mut ix = 0;
         while ix < bytes.len() {
@@ -97,6 +117,7 @@ impl BlockChainBuilder {
         ix
     }
 
+    /// Perform an orderly shutdown of the various components for this pipeline.
     pub fn shutdown(&mut self) {
         self.validator_tx.send(ValidatorMessage::Shutdown).unwrap();
         self.orphanage_tx.send(OrphanageMessage::Shutdown).unwrap();
