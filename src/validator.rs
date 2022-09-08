@@ -29,6 +29,8 @@ pub enum ValidationResult {
 }
 
 struct ActiveBlock {
+    block: Block,
+    height: usize,
 }
 
 impl BlockValidator {
@@ -48,17 +50,25 @@ impl BlockValidator {
             );
         }
 
-        if !self.active_blocks.contains_key(&block.header.prev_block_hash) {
-            return ValidationResult::Orphan(block);
-        }
+        let parent_height = match self.active_blocks.get(&block.header.prev_block_hash) {
+            Some(parent) => parent.height,
+            None => return ValidationResult::Orphan(block),
+        };
 
         if let Err(e) = self.validate_block(&block) {
             return ValidationResult::Invalid(e);
         }
 
-        // TODO: insert block into active_blocks, and attach it up
+        let hash = block.id();
+        let active_block = ActiveBlock {
+            block,
+            height: parent_height + 1,
+        };
+        self.active_blocks.insert(hash, active_block);
 
-        ValidationResult::Valid(block.id())
+        // TODO: archive old active blocks and prune tree
+
+        ValidationResult::Valid(hash)
     }
 
     fn validate_block(&mut self, block: &Block) -> Result<(), BlockValidationError> {
@@ -66,6 +76,13 @@ impl BlockValidator {
         if block.header.version > MAX_SUPPORTED_BLOCK_VERSION {
             return Err(BlockValidationError::new(format!("Block with unknown version: expected {} but got {}", MAX_SUPPORTED_BLOCK_VERSION, block.header.version)));
         }
+
+        let parent = self.active_blocks.get(&block.header.prev_block_hash).unwrap();
+
+        if block.header.time <= parent.block.header.time {
+            return Err(BlockValidationError::new(format!("Block with time {} was not newer than parent block with time {}", block.header.time, parent.block.header.time)));
+        }
+
         Ok(())
     }
 }
