@@ -50,19 +50,22 @@ impl BlockValidator {
             );
         }
 
-        let parent_height = match self.active_blocks.get(&block.header.prev_block_hash) {
-            Some(parent) => parent.height,
+        let is_genesis_block = block.header.prev_block_hash == Hash::zero();
+
+        let height = match self.active_blocks.get(&block.header.prev_block_hash) {
+            Some(parent) => parent.height + 1,
+            None if is_genesis_block => 0,
             None => return ValidationResult::Orphan(block),
         };
 
-        if let Err(e) = self.validate_block(&block) {
+        if let Err(e) = self.validate_block(&block, height) {
             return ValidationResult::Invalid(e);
         }
 
         let hash = block.id();
         let active_block = ActiveBlock {
             block,
-            height: parent_height + 1,
+            height,
         };
         self.active_blocks.insert(hash, active_block);
 
@@ -71,12 +74,22 @@ impl BlockValidator {
         ValidationResult::Valid(hash)
     }
 
-    fn validate_block(&mut self, block: &Block) -> Result<(), BlockValidationError> {
+    fn validate_block(&mut self, block: &Block, height: usize) -> Result<(), BlockValidationError> {
         // TODO: implement more things here. This is just enough scaffolding to avoid lint errors
         if block.header.version > MAX_SUPPORTED_BLOCK_VERSION {
             return Err(BlockValidationError::new(format!("Block with unknown version: expected {} but got {}", MAX_SUPPORTED_BLOCK_VERSION, block.header.version)));
         }
+        if block.computed_merkle_root() != block.header.merkle_root {
+            return Err(BlockValidationError::new(format!("Block with incorrect merkle root: expected {} but got {}", block.computed_merkle_root(), block.header.merkle_root)));
+        }
 
+        // For the genesis block, the above checks are all that we need to do.
+        if height == 0 {
+            // TODO: check genesis block difficulty is 1.0
+            return Ok(());
+        }
+
+        // All other blocks have a parent
         let parent = self.active_blocks.get(&block.header.prev_block_hash).unwrap();
 
         if block.header.time <= parent.block.header.time {
