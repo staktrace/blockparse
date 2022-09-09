@@ -60,6 +60,55 @@ impl Hash {
         hash_bytes.reverse();
         Hash(hash_bytes)
     }
+
+    /// Computes a target hash given the "bits" value from a block header.
+    /// The high byte of `bits` is used as an exponent and the remaining
+    /// bytes are used as the coefficient in the target calculation formula.
+    /// target = coefficient * 2^(8*(exponent–3)). This function will return
+    /// None in case of overflow. Note that the Bitcoin Core reference
+    /// implementation is much more strict here about what is allowed.
+    pub fn from_bits(bits: u32) -> Option<Self> {
+        let mut target_bytes = [0; 32];
+        let mut coefficient = bits & 0x00ffffff;
+        if coefficient == 0 {
+            // No amount of shifting will produce a nonzero or overflow
+            // result, so early-exit here.
+            return Some(Hash(target_bytes));
+        }
+
+        let exponent = bits >> 24;
+        if exponent > 34 {
+            // This will definitely overflow
+            return None;
+        }
+        let mut ix = (34 - exponent) as usize;
+        // loop from the bottom byte of the coefficient to the top, placing them
+        // into the hash array.
+        for _ in 0..3 {
+            let coeff_byte = (coefficient & 0xff) as u8;
+            if ix < target_bytes.len() {
+                target_bytes[ix] = coeff_byte;
+            } // else it's off bottom end of the hash array and we drop it
+
+            // set up for next loop iteration
+
+            coefficient = coefficient >> 8;
+            if ix == 0 {
+                // We're going off the top end of the hash array
+                break;
+            }
+            ix -= 1;
+        }
+
+        if coefficient != 0 {
+            // We only get here if we exited the loop prematurely due to going
+            // off the top end of the array. This means we overflowed nonzero
+            // bytes, so fail.
+            return None;
+        }
+
+        Some(Hash(target_bytes))
+    }
 }
 
 impl fmt::Display for Hash {
@@ -295,5 +344,39 @@ impl Block {
 impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "time:{} id:{} prev:{} merkle:{} bits:{} nonce:{}", self.header.time, self.id(), self.header.prev_block_hash, self.header.merkle_root, self.header.bits, self.header.nonce)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bits_to_hash() {
+        assert_eq!(Hash::from_bits(0x1903a30c).unwrap().to_string(), "0000000000000003a30c00000000000000000000000000000000000000000000");
+        assert_eq!(Hash::from_bits(0x1d00ffff).unwrap().to_string(), "00000000ffff0000000000000000000000000000000000000000000000000000");
+
+        assert_eq!(Hash::from_bits(0x00abcdef).unwrap().to_string(), "0000000000000000000000000000000000000000000000000000000000000000");
+        assert_eq!(Hash::from_bits(0x01abcdef).unwrap().to_string(), "00000000000000000000000000000000000000000000000000000000000000ab");
+        assert_eq!(Hash::from_bits(0x02abcdef).unwrap().to_string(), "000000000000000000000000000000000000000000000000000000000000abcd");
+        assert_eq!(Hash::from_bits(0x03abcdef).unwrap().to_string(), "0000000000000000000000000000000000000000000000000000000000abcdef");
+
+        assert_eq!(Hash::from_bits(0x1fabcdef).unwrap().to_string(), "00abcdef00000000000000000000000000000000000000000000000000000000");
+        assert_eq!(Hash::from_bits(0x20abcdef).unwrap().to_string(), "abcdef0000000000000000000000000000000000000000000000000000000000");
+
+        assert_eq!(Hash::from_bits(0x21abcdef), None);
+        assert_eq!(Hash::from_bits(0x2101cdef), None);
+        assert_eq!(Hash::from_bits(0x2100cdef).unwrap().to_string(), "cdef000000000000000000000000000000000000000000000000000000000000");
+
+        assert_eq!(Hash::from_bits(0x2200cdef), None);
+        assert_eq!(Hash::from_bits(0x220001ef), None);
+        assert_eq!(Hash::from_bits(0x220000ef).unwrap().to_string(), "ef00000000000000000000000000000000000000000000000000000000000000");
+
+        assert_eq!(Hash::from_bits(0x230000ef), None);
+        assert_eq!(Hash::from_bits(0x23000001), None);
+        assert_eq!(Hash::from_bits(0x23000000).unwrap().to_string(), "0000000000000000000000000000000000000000000000000000000000000000");
+
+        assert_eq!(Hash::from_bits(0xffabcdef), None);
+        assert_eq!(Hash::from_bits(0xff000000).unwrap().to_string(), "0000000000000000000000000000000000000000000000000000000000000000");
     }
 }
