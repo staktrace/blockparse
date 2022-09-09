@@ -33,7 +33,7 @@ impl fmt::Debug for ValidationResult {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
             ValidationResult::Valid(h) => write!(f, "ValidationResult::Valid({})", h),
-            ValidationResult::Invalid(e) => write!(f, "ValidationResult::Invalid({})", e.to_string()),
+            ValidationResult::Invalid(e) => write!(f, "ValidationResult::Invalid({})", e),
             ValidationResult::Orphan(b) => write!(f, "ValidationResult::Orphan({})", b.id()),
         }
     }

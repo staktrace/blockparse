@@ -92,7 +92,7 @@ impl Hash {
 
             // set up for next loop iteration
 
-            coefficient = coefficient >> 8;
+            coefficient >>= 8;
             if ix == 0 {
                 // We're going off the top end of the hash array
                 break;
