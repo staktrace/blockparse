@@ -45,7 +45,7 @@ pub enum Network {
 
 /// Object representing a SHA256 hash. Contains the raw 32-byte array that
 /// is the hash.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd)]
 pub struct Hash([u8; 32]);
 
 impl Hash {

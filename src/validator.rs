@@ -82,10 +82,16 @@ impl BlockValidator {
         if block.computed_merkle_root() != block.header.merkle_root {
             return Err(BlockValidationError::new(format!("Block with incorrect merkle root: expected {} but got {}", block.computed_merkle_root(), block.header.merkle_root)));
         }
+        let target = match Hash::from_bits(block.header.bits) {
+            None => return Err(BlockValidationError::new(format!("Target difficulty could not be computed from {:#x}", block.header.bits))),
+            Some(target) => target,
+        };
+        if block.id() >= target {
+            return Err(BlockValidationError::new(format!("Block header hash {} was not less than the target hash {}", block.id(), target)));
+        }
 
         // For the genesis block, the above checks are all that we need to do.
         if height == 0 {
-            // TODO: check genesis block difficulty is 1.0
             return Ok(());
         }
 
