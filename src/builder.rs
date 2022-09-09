@@ -64,7 +64,9 @@ impl BlockChainBuilder {
         let _join_handle = thread::spawn(move|| {
             let mut validator = BlockValidator::new();
             while let ValidatorMessage::NewBlock(block) = rx.recv().unwrap() {
-                match validator.handle_block(block) {
+                let validation_result = validator.handle_block(block);
+                // dbg!(&validation_result);
+                match validation_result {
                     ValidationResult::Valid(id) => orphanage_tx.send(OrphanageMessage::NewParent(id, validator_tx.clone())).unwrap(),
                     ValidationResult::Invalid(_) => (),
                     ValidationResult::Orphan(b) => orphanage_tx.send(OrphanageMessage::NewOrphan(b)).unwrap(),

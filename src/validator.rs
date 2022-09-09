@@ -2,6 +2,7 @@
 
 use crate::{Block, BlockValidationError, Hash};
 use std::collections::HashMap;
+use std::fmt;
 
 const MAX_SUPPORTED_BLOCK_VERSION: u32 = 4;
 
@@ -26,6 +27,16 @@ pub enum ValidationResult {
     /// In this case the block may have been received out-of-order, and should
     /// be tried again later after the indicated parent block has been validated.
     Orphan(Block),
+}
+
+impl fmt::Debug for ValidationResult {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            ValidationResult::Valid(h) => write!(f, "ValidationResult::Valid({})", h),
+            ValidationResult::Invalid(e) => write!(f, "ValidationResult::Invalid({})", e.to_string()),
+            ValidationResult::Orphan(b) => write!(f, "ValidationResult::Orphan({})", b.id()),
+        }
+    }
 }
 
 struct ActiveBlock {
