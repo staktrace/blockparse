@@ -3,10 +3,6 @@
 
 //! This crate provides a full validation node for the Bitcoin protocol.
 
-#[macro_use]
-extern crate bitflags;
-extern crate hmac_sha256;
-
 pub mod builder;
 mod error;
 mod hash;
@@ -16,6 +12,7 @@ pub mod validator;
 
 pub use error::{BlockParseError, BlockValidationError};
 
+use bitflags::bitflags;
 use std::fmt;
 
 /// Trait implemented by most of the data structures that are part of the
