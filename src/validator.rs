@@ -1,6 +1,7 @@
 //! A module that exposes a block validation API.
 
 use crate::{Block, BlockValidationError, Hash};
+use log::info;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -78,6 +79,7 @@ impl BlockValidator {
             block,
             height,
         };
+        info!("Adding block {} to chain at height {}", hash, height);
         self.active_blocks.insert(hash, active_block);
 
         // TODO: archive old active blocks and prune tree

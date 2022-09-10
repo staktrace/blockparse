@@ -3,6 +3,10 @@ use std::fs::File;
 use std::io::Read;
 
 fn main() {
+    env_logger::Builder::new()
+        .filter_level(log::LevelFilter::Trace)
+        .init();
+
     let mut builder = blocktastic::builder::BlockChainBuilder::new(blocktastic::Network::MainNet);
     for arg in env::args().skip(1) {
         let mut file = File::open(&arg).unwrap();

@@ -2,6 +2,7 @@
 
 use crate::{Block, Hash, LittleEndianSerialization, Network};
 use crate::validator::{BlockValidator, ValidationResult};
+use log::{trace, warn};
 use std::collections::HashSet;
 use std::sync::mpsc::{channel, Sender};
 use std::thread;
@@ -65,7 +66,7 @@ impl BlockChainBuilder {
             let mut validator = BlockValidator::new();
             while let ValidatorMessage::NewBlock(block) = rx.recv().unwrap() {
                 let validation_result = validator.handle_block(block);
-                // dbg!(&validation_result);
+                trace!("Validation result: {:?}", &validation_result);
                 match validation_result {
                     ValidationResult::Valid(id) => orphanage_tx.send(OrphanageMessage::NewParent(id, validator_tx.clone())).unwrap(),
                     ValidationResult::Invalid(_) => (),
@@ -146,7 +147,8 @@ impl Orphanage {
     /// if the orphanage is at capacity.
     fn take_orphan(&mut self, block: Block) {
         while self.orphans.len() >= self.size {
-            self.orphans.remove(0);
+            let evicted = self.orphans.remove(0);
+            warn!("Orphanage evicting block {}", evicted.id());
         }
         self.orphans.push(block);
     }
