@@ -4,8 +4,10 @@ use crate::{Block, BlockValidationError, Hash};
 use log::info;
 use std::collections::HashMap;
 use std::fmt;
+use std::time::SystemTime;
 
 const MAX_SUPPORTED_BLOCK_VERSION: u32 = 4;
+const TWO_HOURS_IN_SECONDS: u64 = 2 * 60 * 60;
 
 /// A state machine to validate blocks as they are received. This structure accepts
 /// blocks one at a time, and checks to see if it is valid, updating internal state
@@ -95,10 +97,19 @@ impl BlockValidator {
         if block.computed_merkle_root() != block.header.merkle_root {
             return Err(BlockValidationError::new(format!("Block with incorrect merkle root: expected {} but got {}", block.computed_merkle_root(), block.header.merkle_root)));
         }
+        let seconds_since_epoch = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_err(|_| BlockValidationError::new(String::from("Unable to compute current time relative to the UNIX epoch!")))?
+            .as_secs();
+        if u64::from(block.header.time) > seconds_since_epoch + TWO_HOURS_IN_SECONDS {
+            return Err(BlockValidationError::new(format!("Block timestamp {} was more than two hours in the future from current timestamp {}", block.header.time, seconds_since_epoch)));
+        }
+
         let target = match Hash::from_bits(block.header.bits) {
             None => return Err(BlockValidationError::new(format!("Target difficulty could not be computed from {:#x}", block.header.bits))),
             Some(target) => target,
         };
+        // TODO: check against difficulty 1 values (network-dependent) https://developer.bitcoin.org/reference/block_chain.html#target-nbits
         if block.id() >= target {
             return Err(BlockValidationError::new(format!("Block header hash {} was not less than the target hash {}", block.id(), target)));
         }
@@ -113,6 +124,12 @@ impl BlockValidator {
 
         if block.header.time <= parent.block.header.time {
             return Err(BlockValidationError::new(format!("Block with time {} was not newer than parent block with time {}", block.header.time, parent.block.header.time)));
+        }
+
+        if (height % 2016) == 0 {
+            // TODO: recompute new difficulty and ensure it matches
+        } else if block.header.bits != parent.block.header.bits {
+            return Err(BlockValidationError::new(format!("Block changed the difficulty threshold prematurely; height {} is {} mod 2016", height, height % 2016)));
         }
 
         Ok(())
