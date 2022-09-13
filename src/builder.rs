@@ -5,7 +5,7 @@ use crate::validator::{BlockValidator, ValidationResult};
 use log::{trace, warn};
 use std::collections::HashSet;
 use std::sync::mpsc::{channel, Sender};
-use std::thread;
+use std::thread::{JoinHandle, self};
 
 const ARBITRARY_ORPHANAGE_SIZE: usize = 128;
 
@@ -28,25 +28,29 @@ pub struct BlockChainBuilder {
     network: Network,
     deduplicator: HashSet<Hash>,
     orphanage_tx: Sender<OrphanageMessage>,
+    orphanage_join: JoinHandle<()>,
     validator_tx: Sender<ValidatorMessage>,
+    validator_join: JoinHandle<()>,
 }
 
 impl BlockChainBuilder {
     /// Create a validation pipeline for the given network.
     pub fn new(network: Network) -> Self {
-        let orphanage_tx = Self::spawn_orphanage();
-        let validator_tx = Self::spawn_validator(orphanage_tx.clone());
+        let (orphanage_tx, orphanage_join) = Self::spawn_orphanage();
+        let (validator_tx, validator_join) = Self::spawn_validator(orphanage_tx.clone());
         BlockChainBuilder {
             network,
             deduplicator: HashSet::new(),
             orphanage_tx,
+            orphanage_join,
             validator_tx,
+            validator_join,
         }
     }
 
-    fn spawn_orphanage() -> Sender<OrphanageMessage> {
+    fn spawn_orphanage() -> (Sender<OrphanageMessage>, JoinHandle<()>) {
         let (tx, rx) = channel();
-        let _join_handle = thread::spawn(move|| {
+        let join_handle = thread::spawn(move|| {
             let mut orphanage = Orphanage::new(ARBITRARY_ORPHANAGE_SIZE);
             loop {
                 match rx.recv().unwrap() {
@@ -56,13 +60,13 @@ impl BlockChainBuilder {
                 };
             }
         });
-        tx
+        (tx, join_handle)
     }
 
-    fn spawn_validator(orphanage_tx: Sender<OrphanageMessage>) -> Sender<ValidatorMessage> {
+    fn spawn_validator(orphanage_tx: Sender<OrphanageMessage>) -> (Sender<ValidatorMessage>, JoinHandle<()>) {
         let (tx, rx) = channel();
         let validator_tx = tx.clone();
-        let _join_handle = thread::spawn(move|| {
+        let join_handle = thread::spawn(move|| {
             let mut validator = BlockValidator::new();
             while let ValidatorMessage::NewBlock(block) = rx.recv().unwrap() {
                 let validation_result = validator.handle_block(block);
@@ -74,7 +78,7 @@ impl BlockChainBuilder {
                 };
             };
         });
-        tx
+        (tx, join_handle)
     }
 
     /// Feed some data into the validation pipeline. The bytes provided should be one or more
@@ -121,9 +125,11 @@ impl BlockChainBuilder {
     }
 
     /// Perform an orderly shutdown of the various components for this pipeline.
-    pub fn shutdown(&mut self) {
+    pub fn shutdown(self) {
         self.validator_tx.send(ValidatorMessage::Shutdown).unwrap();
         self.orphanage_tx.send(OrphanageMessage::Shutdown).unwrap();
+        self.validator_join.join().unwrap();
+        self.orphanage_join.join().unwrap();
     }
 }
 

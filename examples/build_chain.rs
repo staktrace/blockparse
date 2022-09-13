@@ -20,4 +20,5 @@ fn main() {
         }
         println!("Fully ingested {:?}", arg);
     }
+    builder.shutdown();
 }
