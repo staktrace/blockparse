@@ -25,10 +25,14 @@ pub struct BlockValidator {
     /// blocks form a tree rooted at the most recent archived block. Generally the longest
     /// path in the tree is the one with the most proof-of-work, and therefore the
     /// canonical blockchain, but that may change. Once the longest path in the active
-    /// block tree is longer than MAX_ACTIVE_HEIGHT, the oldest active blocks on that
+    /// block tree is longer than max_active_height, the oldest active blocks on that
     /// path are archived and shorter branches emanating from those archived blocks
     /// get pruned away.
     active_blocks: HashMap<Hash, ActiveBlock>,
+    /// Maximum height of the active tree; beyond this blocks get archived to prevent
+    /// exceeding the maximum. Defaults to MAX_ACTIVE_HEIGHT but is copied to this field
+    /// for easier testing.
+    max_active_height: usize,
 }
 
 /// Result from validation of a single block.
@@ -61,7 +65,10 @@ struct ActiveBlock {
 impl BlockValidator {
     /// Create a new validator.
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            max_active_height: MAX_ACTIVE_HEIGHT,
+            ..Self::default()
+        }
     }
 
     /// Give the validator one block to validate. If the block is valid, the
@@ -95,7 +102,7 @@ impl BlockValidator {
         info!("Adding block {} to chain at height {}", hash, height);
         self.active_blocks.insert(hash, active_block);
 
-        if height - self.archived_blocks.len() >= MAX_ACTIVE_HEIGHT {
+        if height - self.archived_blocks.len() >= self.max_active_height {
             self.archive_old_blocks(&hash);
         }
 
@@ -108,7 +115,7 @@ impl BlockValidator {
         // Walk up following the parent links such that active_root and iter_hash are
         // separated by the new archiving boundary. active_root will remain active and
         // iter_hash (plus any active ancestors) will get archived.
-        for _i in 0..MAX_ACTIVE_HEIGHT {
+        for _i in 0..self.max_active_height {
             active_root = iter_hash;
             iter_hash = self.active_blocks.get(&iter_hash).unwrap().block.header.prev_block_hash;
         }
