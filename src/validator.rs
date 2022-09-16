@@ -71,6 +71,16 @@ impl BlockValidator {
         }
     }
 
+    #[cfg(test)]
+    fn set_max_active_height(&mut self, height: usize) {
+        self.max_active_height = height;
+    }
+
+    #[cfg(test)]
+    fn get_archived_height(&self) -> usize {
+        self.archived_blocks.len()
+    }
+
     /// Give the validator one block to validate. If the block is valid, the
     /// validator's internal state gets updated and the block is attached to
     /// one of the active chains. Otherwise there should be no changes to
@@ -213,5 +223,49 @@ impl BlockValidator {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use super::*;
+
+    static TIMESTAMP: AtomicU32 = AtomicU32::new(0);
+
+    fn genesis_block() -> Block {
+        block(Hash::zero())
+    }
+
+    fn block(parent: Hash) -> Block {
+        let mut block = Block::default();
+        block.header.prev_block_hash = parent;
+        block.header.time = TIMESTAMP.load(Ordering::Relaxed) + 1;
+        block.header.bits = 0x20ffffff;
+
+        TIMESTAMP.store(block.header.time, Ordering::Relaxed);
+
+        block
+    }
+
+    fn validate_hash(validator: &mut BlockValidator, block: Block) -> Hash {
+        match validator.handle_block(block) {
+            ValidationResult::Valid(h) => h,
+            result => panic!("Got {:?} but expected ValidationResult::Valid", result),
+        }
+    }
+
+    #[test]
+    fn archiving_test() {
+        let mut validator = BlockValidator::new();
+        validator.set_max_active_height(3);
+
+        let genesis_hash = validate_hash(&mut validator, genesis_block());
+        let child_hash = validate_hash(&mut validator, block(genesis_hash));
+        let child_hash = validate_hash(&mut validator, block(child_hash));
+        let child_hash = validate_hash(&mut validator, block(child_hash));
+        let _child_hash = validate_hash(&mut validator, block(child_hash));
+
+        assert_eq!(validator.get_archived_height(), 2);
     }
 }

@@ -40,9 +40,15 @@ pub enum Network {
     RegTest,
 }
 
+impl Default for Network {
+    fn default() -> Self {
+        Self::RegTest
+    }
+}
+
 /// Object representing a SHA256 hash. Contains the raw 32-byte array that
 /// is the hash.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
 pub struct Hash([u8; 32]);
 
 impl Hash {
@@ -269,7 +275,7 @@ impl Transaction {
 }
 
 #[allow(missing_docs)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct BlockHeader {
     pub version: u32,
     pub prev_block_hash: Hash,
@@ -280,7 +286,7 @@ pub struct BlockHeader {
 }
 
 #[allow(missing_docs)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Block {
     pub network: Network,
     pub header: BlockHeader,
