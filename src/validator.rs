@@ -71,16 +71,6 @@ impl BlockValidator {
         }
     }
 
-    #[cfg(test)]
-    fn set_max_active_height(&mut self, height: usize) {
-        self.max_active_height = height;
-    }
-
-    #[cfg(test)]
-    fn get_archived_height(&self) -> usize {
-        self.archived_blocks.len()
-    }
-
     /// Give the validator one block to validate. If the block is valid, the
     /// validator's internal state gets updated and the block is attached to
     /// one of the active chains. Otherwise there should be no changes to
@@ -248,6 +238,12 @@ mod test {
         block
     }
 
+    fn block_with_nonce(parent: Hash, nonce: u32) -> Block {
+        let mut block = block(parent);
+        block.header.nonce = nonce;
+        block
+    }
+
     fn validate_hash(validator: &mut BlockValidator, block: Block) -> Hash {
         match validator.handle_block(block) {
             ValidationResult::Valid(h) => h,
@@ -256,9 +252,9 @@ mod test {
     }
 
     #[test]
-    fn archiving_test() {
+    fn simple_archiving_test() {
         let mut validator = BlockValidator::new();
-        validator.set_max_active_height(3);
+        validator.max_active_height = 3;
 
         let genesis_hash = validate_hash(&mut validator, genesis_block());
         let child_hash = validate_hash(&mut validator, block(genesis_hash));
@@ -266,6 +262,41 @@ mod test {
         let child_hash = validate_hash(&mut validator, block(child_hash));
         let _child_hash = validate_hash(&mut validator, block(child_hash));
 
-        assert_eq!(validator.get_archived_height(), 2);
+        assert_eq!(validator.archived_blocks.len(), 2);
+    }
+
+    #[test]
+    fn tree_archiving_test() {
+        let mut validator = BlockValidator::new();
+        validator.max_active_height = 3;
+
+        let genesis = validate_hash(&mut validator, genesis_block());
+        let child_1a = validate_hash(&mut validator, block_with_nonce(genesis, 1));
+        let child_1b = validate_hash(&mut validator, block_with_nonce(genesis, 2));
+        let child_2a = validate_hash(&mut validator, block(child_1a));
+        let child_2b = validate_hash(&mut validator, block(child_1b));
+
+        // at this point nothing has been archived yet
+        assert_eq!(validator.active_blocks.len(), 5);
+        assert!(validator.active_blocks.contains_key(&genesis));
+        assert!(validator.active_blocks.contains_key(&child_1a));
+        assert!(validator.active_blocks.contains_key(&child_1b));
+        assert!(validator.active_blocks.contains_key(&child_2a));
+        assert!(validator.active_blocks.contains_key(&child_2b));
+        assert_eq!(validator.archived_blocks.len(), 0);
+
+        // Add one more block to the "a" branch. This archives the genesis
+        // block and prunes the "b" branch.
+        let child_3a = validate_hash(&mut validator, block(child_2a));
+
+        // Verify 1a is active, 1b is pruned away, 2b is pruned away
+        assert_eq!(validator.active_blocks.len(), 3);
+        assert!(validator.active_blocks.contains_key(&child_1a));
+        assert!(validator.active_blocks.contains_key(&child_2a));
+        assert!(validator.active_blocks.contains_key(&child_3a));
+        assert!(!validator.active_blocks.contains_key(&child_1b));
+        assert!(!validator.active_blocks.contains_key(&child_2b));
+        assert_eq!(validator.archived_blocks.len(), 1);
+        assert!(validator.archived_blocks.contains_key(&genesis));
     }
 }
