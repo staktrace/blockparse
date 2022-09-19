@@ -1,4 +1,4 @@
-//! A module that exposes a script parsing and validation API.
+//! A module that exposes a script parsing and verification API.
 
 use crate::{BlockParseError, BlockValidationError, LittleEndianSerialization, Opcode, Script, ScriptError};
 use crate::parse::{read_bytes, IntoUsize};
@@ -102,8 +102,8 @@ impl LittleEndianSerialization for Opcode {
 }
 
 /// Parses the given script from raw bytes into a list of opcodes encapsulated
-/// in the Script structure. The input should be the raw lock/unlock scripts
-/// from the transaction.
+/// in the Script structure. Note that this only does structural/syntax checking,
+/// and allows invalid opcodes to be in the returned Script.
 pub fn parse_script(bytes: &[u8]) -> Result<Script, BlockParseError> {
     let mut opcodes = Vec::new();
 
@@ -115,6 +115,17 @@ pub fn parse_script(bytes: &[u8]) -> Result<Script, BlockParseError> {
     Ok(Script {
         opcodes,
     })
+}
+
+impl Script {
+    fn validate(self) -> Result<Self, BlockValidationError> {
+        for opcode in &self.opcodes {
+            if let Opcode::Invalid(op) = opcode {
+                return Err(BlockValidationError::new(format!("Invalid opcode {} found in script", op)));
+            }
+        }
+        Ok(self)
+    }
 }
 
 enum StackEntry {
@@ -138,10 +149,13 @@ impl Executor {
             match opcode {
                 Opcode::PushArray(v) => self.stack.push(StackEntry::Bytes(v)),
                 Opcode::PushNumber(v) => self.stack.push(StackEntry::Number(v.into())),
-                Opcode::Reserved(op) => return Err(BlockValidationError::new(format!("Unexpected reserved opcode {}", op))),
-                Opcode::Nop(_) => (),
-                _ => (),
 
+                Opcode::Reserved(op) => return Err(BlockValidationError::new(format!("Unexpected reserved opcode {}", op))),
+                Opcode::Disabled(op) => return Err(BlockValidationError::new(format!("Unexpected disabled opcode {}", op))),
+                Opcode::Invalid(_) => panic!("Invalid opcodes should have already gotten filtered out"),
+                Opcode::Nop(_) => (),
+
+                // TODO:
 /*
     Opcode::If, // 0x63
     Opcode::NotIf, // 0x64
@@ -170,7 +184,6 @@ impl Executor {
     Opcode::Swap, // 0x7c
     Opcode::Tuck, // 0x7d
 
-    Opcode::Disabled(u8)
     Opcode::Size, // 0x82
 
     Opcode::Equal, // 0x87
@@ -211,22 +224,23 @@ impl Executor {
 
     Opcode::CheckLockTimeVerify, // 0xb1
     Opcode::CheckSequenceVerify, // 0xb2
-
-    Opcode::Invalid(u8), // 0xba - 0xff
 */
+                _ => (),
             }
         }
         Ok(())
     }
 }
 
-/// Verifies that the given lock and unlock scripts are valid scripts,
-/// and that the unlock script is a valid counterpart to the lock script.
-/// This function actually executes the scripts with an internal stack
-/// to ensure that the scripts are fully validated.
+/// Verifies the given lock and unlock scripts. This does the three steps of
+/// script parsing (fails if syntax is incorrect), script validation (fails
+/// if invalid opcodes are used), and script verification (runs the scripts
+/// and ensures that the unlock script correctly unlocks the output from the
+/// lock script).
 pub fn verify(lock: &[u8], unlock: &[u8]) -> Result<bool, ScriptError> {
-    let lock = parse_script(lock).map_err(ScriptError::Parse)?;
-    let unlock = parse_script(unlock).map_err(ScriptError::Parse)?;
+    let lock = parse_script(lock).map_err(ScriptError::Parse)?.validate().map_err(ScriptError::Validation)?;
+    let unlock = parse_script(unlock).map_err(ScriptError::Parse)?.validate().map_err(ScriptError::Validation)?;
+
     let mut executor = Executor::new();
     executor.execute(unlock).map_err(ScriptError::Validation)?;
     executor.execute(lock).map_err(ScriptError::Validation)?;
