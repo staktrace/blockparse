@@ -170,34 +170,35 @@ pub enum Opcode {
     Swap, // 0x7c
     Tuck, // 0x7d
 
-    Cat, // 0x7e, disabled
-    Substr, // 0x7f, disabled
-    Left, // 0x80, disabled
-    Right, // 0x81, disabled
+    Disabled(u8), // 0x7e-0x81, 0x83-0x86, 0x8d-0x8e, 0x95-0x99
+    // Cat, // 0x7e, disabled
+    // Substr, // 0x7f, disabled
+    // Left, // 0x80, disabled
+    // Right, // 0x81, disabled
     Size, // 0x82
 
-    Invert, // 0x83, disabled
-    And, // 0x84, disabled
-    Or, // 0x85, disabled
-    Xor, // 0x86, disabled
+    // Invert, // 0x83, disabled
+    // And, // 0x84, disabled
+    // Or, // 0x85, disabled
+    // Xor, // 0x86, disabled
     Equal, // 0x87
     EqualVerify, // 0x88
 
     Add1, // 0x8b
     Sub1, // 0x8c
-    Mul2, // 0x8d, disabled
-    Div2, // 0x8e, disabled
+    // Mul2, // 0x8d, disabled
+    // Div2, // 0x8e, disabled
     Negate, // 0x8f
     Abs, // 0x90
     Not, // 0x91
     NotEqual0, // 0x92
     Add, // 0x93
     Sub, // 0x94
-    Mul, // 0x95, disabled
-    Div, // 0x96, disabled
-    Mod, // 0x97, disabled
-    LeftShift, // 0x98, disabled
-    RightShift, // 0x99, disabled
+    // Mul, // 0x95, disabled
+    // Div, // 0x96, disabled
+    // Mod, // 0x97, disabled
+    // LeftShift, // 0x98, disabled
+    // RightShift, // 0x99, disabled
 
     BoolAnd, // 0x9a
     BoolOr, // 0x9b
