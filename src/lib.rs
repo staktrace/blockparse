@@ -7,7 +7,7 @@ pub mod builder;
 mod error;
 mod hash;
 pub mod parse;
-mod script;
+pub mod script;
 pub mod validator;
 
 pub use error::{BlockParseError, BlockValidationError, ScriptError};

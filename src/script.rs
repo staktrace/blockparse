@@ -1,3 +1,5 @@
+//! A module that exposes a script parsing and validation API.
+
 use crate::{BlockParseError, BlockValidationError, LittleEndianSerialization, Opcode, Script, ScriptError};
 use crate::parse::{read_bytes, IntoUsize};
 
@@ -100,6 +102,9 @@ impl LittleEndianSerialization for Opcode {
     }
 }
 
+/// Parses the given script from raw bytes into a list of opcodes encapsulated
+/// in the Script structure. The input should be the raw lock/unlock scripts
+/// from the transaction.
 pub fn parse_script(bytes: &[u8]) -> Result<Script, BlockParseError> {
     let mut opcodes = Vec::new();
 
@@ -219,7 +224,10 @@ impl Executor {
     }
 }
 
-#[allow(unused)]
+/// Verifies that the given lock and unlock scripts are valid scripts,
+/// and that the unlock script is a valid counterpart to the lock script.
+/// This function actually executes the scripts with an internal stack
+/// to ensure that the scripts are fully validated.
 pub fn verify(lock: &[u8], unlock: &[u8]) -> Result<bool, ScriptError> {
     let lock = parse_script(lock).map_err(ScriptError::Parse)?;
     let unlock = parse_script(unlock).map_err(ScriptError::Parse)?;
