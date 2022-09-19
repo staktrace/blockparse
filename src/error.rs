@@ -47,3 +47,14 @@ impl std::fmt::Display for BlockValidationError {
 
 impl std::error::Error for BlockValidationError {
 }
+
+/// An error during script validation. This can be either a parsing error
+/// or an actual validation error, and the enum variants represent these
+/// possibilities.
+#[derive(Debug)]
+pub enum ScriptError {
+    /// The script failed to be parsed.
+    Parse(BlockParseError),
+    /// The script failed to validate.
+    Validation(BlockValidationError),
+}

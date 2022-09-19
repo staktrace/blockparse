@@ -10,7 +10,7 @@ pub mod parse;
 mod script;
 pub mod validator;
 
-pub use error::{BlockParseError, BlockValidationError};
+pub use error::{BlockParseError, BlockValidationError, ScriptError};
 
 use bitflags::bitflags;
 use std::fmt;
