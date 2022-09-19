@@ -27,11 +27,10 @@ impl LittleEndianSerialization for Opcode {
             v @ 0x50 => Ok(Opcode::Reserved(v)),
             v @ 0x51..=0x60 => Ok(Opcode::PushNumber(v as i8 - 0x50)),
             v @ 0x61 => Ok(Opcode::Nop(v)),
-            0x62 => Ok(Opcode::Ver),
+            v @ 0x62 => Ok(Opcode::Reserved(v)),
             0x63 => Ok(Opcode::If),
             0x64 => Ok(Opcode::NotIf),
-            0x65 => Ok(Opcode::VerIf),
-            0x66 => Ok(Opcode::VerNotIf),
+            v @ 0x65..=0x66 => Ok(Opcode::Disabled(v)),
             0x67 => Ok(Opcode::Else),
             0x68 => Ok(Opcode::EndIf),
             0x69 => Ok(Opcode::Verify),
@@ -144,11 +143,8 @@ impl Executor {
                 _ => (),
 
 /*
-    Opcode::Ver, // 0x62
     Opcode::If, // 0x63
     Opcode::NotIf, // 0x64
-    Opcode::VerIf, // 0x65
-    Opcode::VerNotIf, // 0x66
     Opcode::Else, // 0x67
     Opcode::EndIf, // 0x68
     Opcode::Verify, // 0x69
