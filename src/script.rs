@@ -128,20 +128,44 @@ impl Script {
     }
 }
 
+#[derive(Clone)]
 enum StackEntry {
     Bytes(Vec<u8>),
     Number(i64),
 }
 
+impl StackEntry {
+    fn as_bool(&self) -> bool {
+        match self {
+            StackEntry::Bytes(v) => !v.is_empty(),  // TODO also check for zero/negative zero bytes?
+            StackEntry::Number(v) => *v != 0,
+        }
+    }
+}
+
 struct Executor {
     stack: Vec<StackEntry>,
+    alt_stack: Vec<StackEntry>,
+}
+
+fn empty_err() -> BlockValidationError {
+    BlockValidationError::new(String::from("Stack is empty when attempting to read item"))
 }
 
 impl Executor {
     fn new() -> Self {
         Self {
             stack: Vec::new(),
+            alt_stack: Vec::new(),
         }
+    }
+
+    fn top_bool(&mut self) -> Result<bool, BlockValidationError> {
+        let as_bool = match self.stack.pop() {
+            None => return Err(empty_err()),
+            Some(e) => e.as_bool(),
+        };
+        Ok(as_bool)
     }
 
     fn execute(&mut self, script: Script) -> Result<(), BlockValidationError> {
@@ -154,26 +178,84 @@ impl Executor {
                 Opcode::Disabled(op) => return Err(BlockValidationError::new(format!("Unexpected disabled opcode {}", op))),
                 Opcode::Invalid(_) => panic!("Invalid opcodes should have already gotten filtered out"),
                 Opcode::Nop(_) => (),
-
-                // TODO:
 /*
+    TODO
     Opcode::If, // 0x63
     Opcode::NotIf, // 0x64
     Opcode::Else, // 0x67
     Opcode::EndIf, // 0x68
-    Opcode::Verify, // 0x69
-    Opcode::Return, // 0x6a
+*/
 
-    Opcode::ToAltStack, // 0x6b
-    Opcode::FromAltStack, // 0x6c
-    Opcode::Drop2, // 0x6d
-    Opcode::Dup2, // 0x6e
-    Opcode::Dup3, // 0x6f
-    Opcode::Over2, // 0x70
-    Opcode::Rot2, // 0x71
-    Opcode::Swap2, // 0x72
-    Opcode::IfDup, // 0x73
-    Opcode::Depth, // 0x74
+                Opcode::Verify => {
+                    if !self.top_bool()? {
+                        return Err(BlockValidationError::new(String::from("Top stack entry evaluted to false for VERIFY opcode")));
+                    }
+                }
+                Opcode::Return => return Err(BlockValidationError::new(String::from("Encountered RETURN opcode"))),
+
+                Opcode::ToAltStack => self.alt_stack.push(self.stack.pop().ok_or_else(empty_err)?),
+                Opcode::FromAltStack => self.stack.push(self.alt_stack.pop().ok_or_else(empty_err)?),
+                Opcode::Drop2 => {
+                    if self.stack.len() < 2 {
+                        return Err(empty_err());
+                    }
+                    self.stack.pop();
+                    self.stack.pop();
+                }
+                Opcode::Dup2 => {
+                    if self.stack.len() < 2 {
+                        return Err(empty_err());
+                    }
+                    self.stack.push(self.stack[self.stack.len() - 2].clone());
+                    self.stack.push(self.stack[self.stack.len() - 2].clone());
+                }
+                Opcode::Dup3 => {
+                    if self.stack.len() < 3 {
+                        return Err(empty_err());
+                    }
+                    self.stack.push(self.stack[self.stack.len() - 3].clone());
+                    self.stack.push(self.stack[self.stack.len() - 3].clone());
+                    self.stack.push(self.stack[self.stack.len() - 3].clone());
+                }
+                Opcode::Over2 => {
+                    if self.stack.len() < 4 {
+                        return Err(empty_err());
+                    }
+                    self.stack.push(self.stack[self.stack.len() - 4].clone());
+                    self.stack.push(self.stack[self.stack.len() - 4].clone());
+                }
+                Opcode::Rot2 => {
+                    if self.stack.len() < 6 {
+                        return Err(empty_err());
+                    }
+                    let removed = self.stack.remove(self.stack.len() - 6);
+                    self.stack.push(removed);
+                    let removed = self.stack.remove(self.stack.len() - 6);
+                    self.stack.push(removed);
+                }
+                Opcode::Swap2 => {
+                    if self.stack.len() < 4 {
+                        return Err(empty_err());
+                    }
+                    let removed = self.stack.remove(self.stack.len() - 4);
+                    self.stack.push(removed);
+                    let removed = self.stack.remove(self.stack.len() - 4);
+                    self.stack.push(removed);
+                }
+                Opcode::IfDup => {
+                    if self.stack.is_empty() {
+                        return Err(empty_err());
+                    }
+                    if self.stack[self.stack.len() - 1].as_bool() {
+                        self.stack.push(self.stack[self.stack.len() - 1].clone());
+                    }
+                }
+                Opcode::Depth => {
+                    let size = i64::try_from(self.stack.len()).map_err(|_| BlockValidationError::new(format!("Stack size {} is too large for i64", self.stack.len())))?;
+                    self.stack.push(StackEntry::Number(size));
+                }
+/*
+    TODO
     Opcode::Drop, // 0x75
     Opcode::Dup, // 0x76
     Opcode::Nip, // 0x77
