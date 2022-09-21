@@ -168,6 +168,15 @@ impl Executor {
         Ok(as_bool)
     }
 
+    fn top_number(&mut self) -> Result<i64, BlockValidationError> {
+        let as_number = match self.stack.pop() {
+            None => return Err(empty_err()),
+            Some(StackEntry::Bytes(_)) => return Err(BlockValidationError::new(String::from("Stack top was bytes, expected number"))), // TODO try conversion to number
+            Some(StackEntry::Number(v)) => v,
+        };
+        Ok(as_number)
+    }
+
     fn stack_at_least(&self, depth: usize) -> Result<(), BlockValidationError> {
         if self.stack.len() < depth {
             return Err(empty_err());
@@ -247,18 +256,54 @@ impl Executor {
                     let size = i64::try_from(self.stack.len()).map_err(|_| BlockValidationError::new(format!("Stack size {} is too large for i64", self.stack.len())))?;
                     self.stack.push(StackEntry::Number(size));
                 }
+                Opcode::Drop => {
+                    self.stack_at_least(1)?;
+                    self.stack.pop();
+                }
+                Opcode::Dup => {
+                    self.stack_at_least(1)?;
+                    self.stack.push(self.stack[self.stack.len() - 1].clone());
+                }
+                Opcode::Nip => {
+                    self.stack_at_least(2)?;
+                    self.stack.remove(self.stack.len() - 2);
+                }
+                Opcode::Over => {
+                    self.stack_at_least(2)?;
+                    self.stack.push(self.stack[self.stack.len() - 2].clone());
+                }
+                Opcode::Pick => {
+                    let number = self.top_number()?;
+                    let number = usize::try_from(number).map_err(|_| BlockValidationError::new(format!("Unable to fit top stack item {} in a usize", number)))?;
+                    let depth = number.checked_add(1).ok_or_else(|| BlockValidationError::new(String::from("Overflow during PICK operation")))?;
+                    self.stack_at_least(depth)?;
+                    self.stack.push(self.stack[self.stack.len() - depth].clone());
+                }
+                Opcode::Roll => {
+                    let number = self.top_number()?;
+                    let number = usize::try_from(number).map_err(|_| BlockValidationError::new(format!("Unable to fit top stack item {} in a usize", number)))?;
+                    let depth = number.checked_add(1).ok_or_else(|| BlockValidationError::new(String::from("Overflow during ROLL operation")))?;
+                    self.stack_at_least(depth)?;
+                    let removed = self.stack.remove(self.stack.len() - depth);
+                    self.stack.push(removed);
+                }
+                Opcode::Rot => {
+                    self.stack_at_least(3)?;
+                    let removed = self.stack.remove(self.stack.len() - 3);
+                    self.stack.push(removed);
+                }
+                Opcode::Swap => {
+                    self.stack_at_least(2)?;
+                    let removed = self.stack.remove(self.stack.len() - 2);
+                    self.stack.push(removed);
+                }
+                Opcode::Tuck => {
+                    self.stack_at_least(2)?;
+                    let copy = self.stack[self.stack.len() - 1].clone();
+                    self.stack.insert(self.stack.len() - 2, copy);
+                }
 /*
     TODO
-    Opcode::Drop, // 0x75
-    Opcode::Dup, // 0x76
-    Opcode::Nip, // 0x77
-    Opcode::Over, // 0x78
-    Opcode::Pick, // 0x79
-    Opcode::Roll, // 0x7a
-    Opcode::Rot, // 0x7b
-    Opcode::Swap, // 0x7c
-    Opcode::Tuck, // 0x7d
-
     Opcode::Size, // 0x82
 
     Opcode::Equal, // 0x87
