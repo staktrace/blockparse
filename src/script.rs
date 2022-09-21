@@ -168,6 +168,13 @@ impl Executor {
         Ok(as_bool)
     }
 
+    fn stack_at_least(&self, depth: usize) -> Result<(), BlockValidationError> {
+        if self.stack.len() < depth {
+            return Err(empty_err());
+        }
+        Ok(())
+    }
+
     fn execute(&mut self, script: Script) -> Result<(), BlockValidationError> {
         for opcode in script.opcodes {
             match opcode {
@@ -196,56 +203,42 @@ impl Executor {
                 Opcode::ToAltStack => self.alt_stack.push(self.stack.pop().ok_or_else(empty_err)?),
                 Opcode::FromAltStack => self.stack.push(self.alt_stack.pop().ok_or_else(empty_err)?),
                 Opcode::Drop2 => {
-                    if self.stack.len() < 2 {
-                        return Err(empty_err());
-                    }
+                    self.stack_at_least(2)?;
                     self.stack.pop();
                     self.stack.pop();
                 }
                 Opcode::Dup2 => {
-                    if self.stack.len() < 2 {
-                        return Err(empty_err());
-                    }
+                    self.stack_at_least(2)?;
                     self.stack.push(self.stack[self.stack.len() - 2].clone());
                     self.stack.push(self.stack[self.stack.len() - 2].clone());
                 }
                 Opcode::Dup3 => {
-                    if self.stack.len() < 3 {
-                        return Err(empty_err());
-                    }
+                    self.stack_at_least(3)?;
                     self.stack.push(self.stack[self.stack.len() - 3].clone());
                     self.stack.push(self.stack[self.stack.len() - 3].clone());
                     self.stack.push(self.stack[self.stack.len() - 3].clone());
                 }
                 Opcode::Over2 => {
-                    if self.stack.len() < 4 {
-                        return Err(empty_err());
-                    }
+                    self.stack_at_least(4)?;
                     self.stack.push(self.stack[self.stack.len() - 4].clone());
                     self.stack.push(self.stack[self.stack.len() - 4].clone());
                 }
                 Opcode::Rot2 => {
-                    if self.stack.len() < 6 {
-                        return Err(empty_err());
-                    }
+                    self.stack_at_least(6)?;
                     let removed = self.stack.remove(self.stack.len() - 6);
                     self.stack.push(removed);
                     let removed = self.stack.remove(self.stack.len() - 6);
                     self.stack.push(removed);
                 }
                 Opcode::Swap2 => {
-                    if self.stack.len() < 4 {
-                        return Err(empty_err());
-                    }
+                    self.stack_at_least(4)?;
                     let removed = self.stack.remove(self.stack.len() - 4);
                     self.stack.push(removed);
                     let removed = self.stack.remove(self.stack.len() - 4);
                     self.stack.push(removed);
                 }
                 Opcode::IfDup => {
-                    if self.stack.is_empty() {
-                        return Err(empty_err());
-                    }
+                    self.stack_at_least(1)?;
                     if self.stack[self.stack.len() - 1].as_bool() {
                         self.stack.push(self.stack[self.stack.len() - 1].clone());
                     }
